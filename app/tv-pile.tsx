@@ -33,9 +33,9 @@ const TVS: TvDef[] = [
   { id: "b", x: 10, y: 468, w: 172, h: 132, body: "#34425f", panel: "#2b3750", bezel: "#121a2b", acc1: "#8fb1ff", acc2: "#e0c56a", type: "panel", controls: "sliders", screen: "rect", floor: true },
   { id: "f", x: 36, y: 387, w: 108, h: 84, body: "#5a3350", panel: "#cfc4b4", bezel: "#20121c", acc1: "#e8955c", acc2: "#5a3350", type: "portable", controls: "dials", screen: "rect" },
   { id: "a", x: 190, y: 426, w: 200, h: 152, body: "#5a4330", panel: "#4a3628", bezel: "#1c140d", acc1: "#d8b36a", acc2: "#b9a5f7", type: "console", wood: true, controls: "dials", screen: "rect", floor: true },
-  { id: "c", x: 211, y: 311, w: 164, h: 118, body: "#4d3542", panel: "#412c37", bezel: "#1d1218", acc1: "#ef99c2", acc2: "#8fb1ff", type: "plain", controls: "dials", screen: "rect" },
+  { id: "c", x: 211, y: 311, w: 164, h: 118, body: "#4d3542", panel: "#412c37", bezel: "#1d1218", acc1: "#ef99c2", acc2: "#8fb1ff", type: "plain", controls: "sliders", screen: "rect" },
   { id: "e", x: 226, y: 208, w: 140, h: 106, body: "#423a5c", panel: "#37304e", bezel: "#191426", acc1: "#b9a5f7", acc2: "#ef99c2", type: "antenna", controls: "dials", screen: "rect" },
-  { id: "g", x: 396, y: 488, w: 148, h: 112, body: "#375152", panel: "#2c4243", bezel: "#101c1c", acc1: "#7de3d0", acc2: "#e0c56a", type: "plain", controls: "dials", screen: "round", floor: true },
+  { id: "g", x: 396, y: 488, w: 148, h: 112, body: "#375152", panel: "#2c4243", bezel: "#101c1c", acc1: "#7de3d0", acc2: "#e0c56a", type: "plain", controls: "toggles", screen: "round", floor: true },
   { id: "h", x: 418, y: 415, w: 100, h: 76, body: "#4a4460", panel: "#3d3852", bezel: "#191627", acc1: "#b9a5f7", acc2: "#ef99c2", type: "plain", controls: "toggles", screen: "rect" },
   { id: "d", x: 560, y: 510, w: 116, h: 90, body: "#3a4868", panel: "#303c58", bezel: "#141c2e", acc1: "#7de3d0", acc2: "#8fb1ff", type: "plain", controls: "buttons", screen: "rect", floor: true },
 ];
