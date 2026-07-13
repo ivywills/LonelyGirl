@@ -57,9 +57,9 @@ function Dial({ size, color, angle }: { size: number; color: string; angle: numb
         height: size,
         margin: "5px auto 0",
         borderRadius: "50%",
-        background: "#15121b",
+        background: "radial-gradient(circle at 35% 30%, #2b2638, #15121b 72%)",
         border: "1.5px solid rgba(255,255,255,0.28)",
-        boxShadow: "inset 0 -2px 3px rgba(0,0,0,0.6), inset 0 2px 2px rgba(255,255,255,0.12)",
+        boxShadow: "inset 0 -2px 3px rgba(0,0,0,0.6), inset 0 2px 2px rgba(255,255,255,0.12), 0 1px 2px rgba(0,0,0,0.5)",
       }}
     >
       <div
@@ -221,6 +221,10 @@ function Tv({
     : { w: scrW - 2 * inset, h: scrH - 2 * inset };
   const cx = pad + scrW + 6;
   const cw = t.w - cx - pad;
+  const screenRadius = round ? "50%" : `${Math.round(scrH * 0.14)}px / ${Math.round(scrH * 0.2)}px`;
+  const bodyBg = t.wood
+    ? `repeating-linear-gradient(92deg, rgba(0,0,0,0.10) 0px, rgba(0,0,0,0.10) 2px, transparent 2px, transparent 9px), linear-gradient(180deg, ${sh(t.body, 1.12)}, ${t.body} 35%, ${sh(t.body, 0.9)})`
+    : `linear-gradient(180deg, ${sh(t.body, 1.12)}, ${t.body} 35%, ${sh(t.body, 0.9)})`;
 
   return (
     <button
@@ -234,7 +238,7 @@ function Tv({
         height: t.h,
         transform: pos.rot ? `rotate(${pos.rot}deg)` : undefined,
         padding: 0,
-        background: t.body,
+        background: bodyBg,
         borderRadius: 6,
         border: "1px solid rgba(255,255,255,0.14)",
         boxSizing: "border-box",
@@ -263,21 +267,6 @@ function Tv({
           <rect x="10" y={t.h - 1} width={t.w - 20} height="4" rx="2" fill="rgba(0,0,0,0.28)" />
         )}
       </svg>
-      {t.wood &&
-        [0, 1, 2].map((i) => (
-          <div
-            key={i}
-            style={{
-              position: "absolute",
-              left: "3%",
-              right: "3%",
-              top: `${22 + i * 30}%`,
-              height: 1,
-              background: "rgba(0,0,0,0.25)",
-              pointerEvents: "none",
-            }}
-          />
-        ))}
       <div
         style={{
           position: "absolute",
@@ -288,39 +277,50 @@ function Tv({
           background: t.bezel,
           borderRadius: round ? "50%" : 9,
           border: "1px solid rgba(0,0,0,0.7)",
-          boxShadow: "inset 0 0 0 1.5px rgba(255,255,255,0.07)",
+          boxShadow:
+            "inset 0 0 0 1.5px rgba(255,255,255,0.07), inset 0 2px 4px rgba(0,0,0,0.7), inset 0 -1px 2px rgba(255,255,255,0.06)",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
           boxSizing: "border-box",
         }}
       >
-        <canvas
-          ref={canvasRef}
-          width={Math.max(14, Math.ceil(cvSize.w / NOISE_SCALE))}
-          height={Math.max(12, Math.ceil(cvSize.h / NOISE_SCALE))}
-          style={{
-            width: cvSize.w,
-            height: cvSize.h,
-            borderRadius: round ? "50%" : `${Math.round(scrH * 0.14)}px / ${Math.round(scrH * 0.2)}px`,
-            display: "block",
-            imageRendering: "pixelated",
-            background: "#0b0a10",
-          }}
-        />
-        <div
-          style={{
-            position: "absolute",
-            left: "14%",
-            top: "10%",
-            width: "16%",
-            height: "78%",
-            background: "rgba(255,255,255,0.06)",
-            borderRadius: "45%",
-            transform: "skewX(-16deg)",
-            pointerEvents: "none",
-          }}
-        />
+        <div style={{ position: "relative", width: cvSize.w, height: cvSize.h }}>
+          <canvas
+            ref={canvasRef}
+            width={Math.max(14, Math.ceil(cvSize.w / NOISE_SCALE))}
+            height={Math.max(12, Math.ceil(cvSize.h / NOISE_SCALE))}
+            style={{
+              width: "100%",
+              height: "100%",
+              borderRadius: screenRadius,
+              display: "block",
+              imageRendering: "pixelated",
+              background: "#0b0a10",
+            }}
+          />
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              borderRadius: screenRadius,
+              background:
+                "repeating-linear-gradient(0deg, rgba(0,0,0,0.16) 0px, rgba(0,0,0,0.16) 1px, transparent 1px, transparent 3px)",
+              boxShadow: "inset 0 0 16px rgba(0,0,0,0.55)",
+              pointerEvents: "none",
+            }}
+          />
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              borderRadius: screenRadius,
+              background:
+                "radial-gradient(ellipse at 28% 22%, rgba(255,255,255,0.13), rgba(255,255,255,0.04) 32%, transparent 55%)",
+              pointerEvents: "none",
+            }}
+          />
+        </div>
       </div>
       <div
         style={{
@@ -430,6 +430,23 @@ function Tv({
               borderBottom: "3px solid #d8b36a",
               borderRadius: "0 0 4px 4px",
               transform: `skewX(${l === "10%" ? 8 : -8}deg)`,
+            }}
+          />
+        ))}
+      {floor && !pos.legs && t.type !== "console" &&
+        ["14%", "78%"].map((l) => (
+          <div
+            key={l}
+            style={{
+              position: "absolute",
+              top: "100%",
+              left: l,
+              width: 16,
+              height: 5,
+              background: "#0d0b10",
+              border: "1px solid rgba(255,255,255,0.1)",
+              borderTop: "none",
+              borderRadius: "0 0 3px 3px",
             }}
           />
         ))}
@@ -617,6 +634,35 @@ export default function TvPile({ signedIn }: { signedIn: boolean }) {
               borderRadius: "50%",
             }}
           />
+          <svg
+            width={stageW}
+            height={stageH}
+            style={{ position: "absolute", left: 0, top: 0, pointerEvents: "none" }}
+          >
+            {mobile ? (
+              <>
+                <path
+                  d="M204 550 C 218 570, 188 580, 194 592"
+                  stroke="#1f1b28"
+                  strokeWidth="3.5"
+                  fill="none"
+                  strokeLinecap="round"
+                />
+                <rect x="189" y="590" width="10" height="8" rx="2" fill="#1f1b28" />
+              </>
+            ) : (
+              <>
+                <path
+                  d="M386 566 C 412 584, 398 598, 436 599"
+                  stroke="#1f1b28"
+                  strokeWidth="3.5"
+                  fill="none"
+                  strokeLinecap="round"
+                />
+                <rect x="433" y="594" width="11" height="9" rx="2" fill="#1f1b28" />
+              </>
+            )}
+          </svg>
           {ordered.map((t, i) => (
             <Tv
               key={t.id}
