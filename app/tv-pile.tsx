@@ -530,7 +530,7 @@ export default function TvPile({ signedIn }: { signedIn: boolean }) {
       setMobile(isMobile);
       if (wrapRef.current) {
         const avail = wrapRef.current.clientWidth;
-        setScale(isMobile ? Math.min(1.7, avail / MOBILE_W) : Math.min(1, avail / STAGE_W));
+        setScale(isMobile ? Math.min(1.7, avail / MOBILE_W) : Math.min(1.25, avail / STAGE_W));
       }
       setReady(true);
     };
@@ -611,7 +611,7 @@ export default function TvPile({ signedIn }: { signedIn: boolean }) {
       ref={wrapRef}
       style={{
         width: "100%",
-        maxWidth: STAGE_W,
+        maxWidth: STAGE_W * 1.25,
         margin: "0 auto",
         height: stageH * scale,
         overflow: "hidden",
@@ -624,7 +624,7 @@ export default function TvPile({ signedIn }: { signedIn: boolean }) {
           height: stageH,
           transform: `scale(${scale})`,
           transformOrigin: "top left",
-          marginLeft: Math.max(0, (Math.min(STAGE_W, wrapRef.current?.clientWidth ?? stageW * scale) - stageW * scale) / 2),
+          marginLeft: Math.max(0, (Math.min(STAGE_W * 1.25, wrapRef.current?.clientWidth ?? stageW * scale) - stageW * scale) / 2),
         }}
       >
         <div style={{ position: "relative", width: stageW, height: stageH }}>
