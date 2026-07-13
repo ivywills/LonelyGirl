@@ -199,10 +199,14 @@ function Controls({ t }: { t: TvDef }) {
 
 function Tv({
   t,
+  pos,
+  floor,
   onClick,
   canvasRef,
 }: {
   t: TvDef;
+  pos: { x: number; y: number };
+  floor: boolean;
   onClick: () => void;
   canvasRef: (el: HTMLCanvasElement | null) => void;
 }) {
@@ -224,8 +228,8 @@ function Tv({
       onClick={onClick}
       style={{
         position: "absolute",
-        left: t.x,
-        top: t.y,
+        left: pos.x,
+        top: pos.y,
         width: t.w,
         height: t.h,
         padding: 0,
@@ -254,7 +258,7 @@ function Tv({
           stroke="rgba(0,0,0,0.35)"
           strokeWidth="0.5"
         />
-        {!t.floor && (
+        {!floor && (
           <rect x="10" y={t.h - 1} width={t.w - 20} height="4" rx="2" fill="rgba(0,0,0,0.28)" />
         )}
       </svg>
@@ -475,15 +479,38 @@ function Tv({
   );
 }
 
+const MOBILE_W = 220;
+const MOBILE_H = 940;
+// Single tower, widest at the bottom: y positions top to bottom
+const MOBILE_POS: Record<string, { x: number; y: number }> = {
+  h: { x: 60, y: 20 },
+  f: { x: 56, y: 96 },
+  d: { x: 52, y: 180 },
+  e: { x: 40, y: 270 },
+  g: { x: 36, y: 376 },
+  c: { x: 28, y: 488 },
+  b: { x: 24, y: 606 },
+  a: { x: 10, y: 738 },
+};
+// Draw bottom TVs first so upper cabinets sit cleanly over lower top faces
+const MOBILE_DOM_ORDER = ["a", "b", "c", "g", "e", "d", "f", "h"];
+
 export default function TvPile({ signedIn }: { signedIn: boolean }) {
   const router = useRouter();
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvases = useRef<(HTMLCanvasElement | null)[]>([]);
   const [scale, setScale] = useState(1);
+  const [mobile, setMobile] = useState(false);
 
   useEffect(() => {
     const update = () => {
-      if (wrapRef.current) setScale(Math.min(1, wrapRef.current.clientWidth / STAGE_W));
+      const vw = window.innerWidth;
+      const isMobile = vw < 560;
+      setMobile(isMobile);
+      if (wrapRef.current) {
+        const avail = wrapRef.current.clientWidth;
+        setScale(isMobile ? Math.min(1.7, avail / MOBILE_W) : Math.min(1, avail / STAGE_W));
+      }
     };
     update();
     window.addEventListener("resize", update);
@@ -551,13 +578,27 @@ export default function TvPile({ signedIn }: { signedIn: boolean }) {
     }
   };
 
+  const stageW = mobile ? MOBILE_W : STAGE_W;
+  const stageH = mobile ? MOBILE_H : STAGE_H;
+  const ordered = mobile
+    ? MOBILE_DOM_ORDER.map((id) => TVS.find((t) => t.id === id)!)
+    : TVS;
+
   return (
     <div
       ref={wrapRef}
-      style={{ width: "100%", maxWidth: STAGE_W, margin: "0 auto", height: STAGE_H * scale, overflow: "hidden" }}
+      style={{ width: "100%", maxWidth: STAGE_W, margin: "0 auto", height: stageH * scale, overflow: "hidden" }}
     >
-      <div style={{ width: STAGE_W, height: STAGE_H, transform: `scale(${scale})`, transformOrigin: "top left" }}>
-        <div style={{ position: "relative", width: STAGE_W, height: STAGE_H }}>
+      <div
+        style={{
+          width: stageW,
+          height: stageH,
+          transform: `scale(${scale})`,
+          transformOrigin: "top left",
+          marginLeft: Math.max(0, (Math.min(STAGE_W, wrapRef.current?.clientWidth ?? stageW * scale) - stageW * scale) / 2),
+        }}
+      >
+        <div style={{ position: "relative", width: stageW, height: stageH }}>
           <div
             style={{
               position: "absolute",
@@ -569,10 +610,12 @@ export default function TvPile({ signedIn }: { signedIn: boolean }) {
               borderRadius: "50%",
             }}
           />
-          {TVS.map((t, i) => (
+          {ordered.map((t, i) => (
             <Tv
               key={t.id}
               t={t}
+              pos={mobile ? MOBILE_POS[t.id] : { x: t.x, y: t.y }}
+              floor={mobile ? t.id === "a" : !!t.floor}
               onClick={() => handleClick(t)}
               canvasRef={(el) => {
                 canvases.current[i] = el;
