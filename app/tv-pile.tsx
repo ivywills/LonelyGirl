@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 const STAGE_W = 680;
@@ -499,8 +499,9 @@ export default function TvPile({ signedIn }: { signedIn: boolean }) {
   const canvases = useRef<(HTMLCanvasElement | null)[]>([]);
   const [scale, setScale] = useState(1);
   const [mobile, setMobile] = useState(false);
+  const [ready, setReady] = useState(false);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const update = () => {
       const vw = window.innerWidth;
       const isMobile = vw < 560;
@@ -509,6 +510,7 @@ export default function TvPile({ signedIn }: { signedIn: boolean }) {
         const avail = wrapRef.current.clientWidth;
         setScale(isMobile ? Math.min(1.7, avail / MOBILE_W) : Math.min(1, avail / STAGE_W));
       }
+      setReady(true);
     };
     update();
     window.addEventListener("resize", update);
@@ -585,7 +587,14 @@ export default function TvPile({ signedIn }: { signedIn: boolean }) {
   return (
     <div
       ref={wrapRef}
-      style={{ width: "100%", maxWidth: STAGE_W, margin: "0 auto", height: stageH * scale, overflow: "hidden" }}
+      style={{
+        width: "100%",
+        maxWidth: STAGE_W,
+        margin: "0 auto",
+        height: stageH * scale,
+        overflow: "hidden",
+        visibility: ready ? "visible" : "hidden",
+      }}
     >
       <div
         style={{

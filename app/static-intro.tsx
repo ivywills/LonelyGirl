@@ -20,6 +20,8 @@ export default function StaticIntro({
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [gone, setGone] = useState(false);
+  const [painted, setPainted] = useState(false);
+  const paintedRef = useRef(false);
 
   useEffect(() => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
@@ -147,6 +149,10 @@ export default function StaticIntro({
         d[o + 3] = 255;
       }
       nctx.putImageData(img, 0, 0);
+      if (!paintedRef.current) {
+        paintedRef.current = true;
+        setPainted(true);
+      }
 
       // Composite: intact chunks in place, released chunks fall and fade
       ctx.clearRect(0, 0, W, H);
@@ -195,19 +201,26 @@ export default function StaticIntro({
     <>
       {children}
       {!gone && (
-        <canvas
-          ref={canvasRef}
+        <div
           aria-hidden
           style={{
             position: "fixed",
             inset: 0,
-            width: "100vw",
-            height: "100vh",
             zIndex: 50,
-            imageRendering: "pixelated",
-            background: "transparent",
+            background: painted ? "transparent" : "#131218",
           }}
-        />
+        >
+          <canvas
+            ref={canvasRef}
+            style={{
+              position: "absolute",
+              inset: 0,
+              width: "100vw",
+              height: "100vh",
+              imageRendering: "pixelated",
+            }}
+          />
+        </div>
       )}
     </>
   );
