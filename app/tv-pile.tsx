@@ -530,7 +530,9 @@ export default function TvPile({ signedIn }: { signedIn: boolean }) {
       setMobile(isMobile);
       if (wrapRef.current) {
         const avail = wrapRef.current.clientWidth;
-        setScale(isMobile ? Math.min(1.7, avail / MOBILE_W) : Math.min(1.25, avail / STAGE_W));
+        // Desktop: never scale past what fits the viewport height (no page scroll)
+        const fitH = (window.innerHeight - 110) / STAGE_H;
+        setScale(isMobile ? Math.min(1.7, avail / MOBILE_W) : Math.min(1.25, avail / STAGE_W, fitH));
       }
       setReady(true);
     };
