@@ -9,7 +9,7 @@ const HOLD_MS = 2600; // full static hold
 const REVEAL_MS = 2000; // window over which chunks get released
 const FALL_MS = 750; // how long a released chunk falls before it's gone
 const SCALE = 3; // noise chunkiness (bigger = chunkier pixels)
-const CELL = 4; // size of falling chunks, in low-res pixels
+const CELL = 2; // size of falling chunks, in low-res pixels
 
 type Cell = { x: number; y: number; release: number };
 
