@@ -5,7 +5,7 @@ import { Lobster } from "next/font/google";
 
 const lobster = Lobster({ subsets: ["latin"], weight: "400" });
 
-const HOLD_MS = 2600; // full static hold
+const HOLD_MS = 1600; // full static hold
 const REVEAL_MS = 2000; // window over which chunks get released
 const FALL_MS = 750; // how long a released chunk falls before it's gone
 const SCALE = 3; // noise chunkiness (bigger = chunkier pixels)
