@@ -58,16 +58,29 @@ export default function StaticIntro({
       m.height = H;
       const mctx = m.getContext("2d");
       if (!mctx) return;
-      const fontSize = Math.min(W / 7.5, H / 4.5);
-      mctx.font = `400 ${fontSize}px ${lobster.style.fontFamily}, cursive`;
+      const portrait = W < H;
       mctx.textAlign = "center";
       mctx.textBaseline = "middle";
       mctx.lineJoin = "round";
-      mctx.lineWidth = fontSize * 0.04;
       mctx.strokeStyle = "#fff";
       mctx.fillStyle = "#fff";
-      mctx.fillText("Lonely Girl", W / 2, H / 2);
-      mctx.strokeText("Lonely Girl", W / 2, H / 2);
+      if (portrait) {
+        // Mobile: stack the two words, bigger, higher on the screen
+        const fontSize = Math.min(W / 4.2, H / 5.5);
+        mctx.font = `400 ${fontSize}px ${lobster.style.fontFamily}, cursive`;
+        mctx.lineWidth = fontSize * 0.04;
+        const cy = H * 0.3;
+        mctx.fillText("Lonely", W / 2, cy - fontSize * 0.58);
+        mctx.strokeText("Lonely", W / 2, cy - fontSize * 0.58);
+        mctx.fillText("Girl", W / 2, cy + fontSize * 0.58);
+        mctx.strokeText("Girl", W / 2, cy + fontSize * 0.58);
+      } else {
+        const fontSize = Math.min(W / 7.5, H / 4.5);
+        mctx.font = `400 ${fontSize}px ${lobster.style.fontFamily}, cursive`;
+        mctx.lineWidth = fontSize * 0.04;
+        mctx.fillText("Lonely Girl", W / 2, H / 2);
+        mctx.strokeText("Lonely Girl", W / 2, H / 2);
+      }
       mask = mctx.getImageData(0, 0, W, H).data;
 
       // Falling chunks: released from the centre outwards, with jitter.
