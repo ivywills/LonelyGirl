@@ -1,15 +1,15 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Pacifico } from "next/font/google";
+import { Lobster } from "next/font/google";
 
-const pacifico = Pacifico({ subsets: ["latin"], weight: "400" });
+const lobster = Lobster({ subsets: ["latin"], weight: "400" });
 
 const HOLD_MS = 2600; // full static hold
 const REVEAL_MS = 2000; // window over which chunks get released
 const FALL_MS = 750; // how long a released chunk falls before it's gone
 const SCALE = 3; // noise chunkiness (bigger = chunkier pixels)
-const CELL = 10; // size of falling chunks, in low-res pixels
+const CELL = 4; // size of falling chunks, in low-res pixels
 
 type Cell = { x: number; y: number; release: number };
 
@@ -58,12 +58,12 @@ export default function StaticIntro({
       m.height = H;
       const mctx = m.getContext("2d");
       if (!mctx) return;
-      const fontSize = Math.min(W / 8, H / 4.8);
-      mctx.font = `400 ${fontSize}px ${pacifico.style.fontFamily}, cursive`;
+      const fontSize = Math.min(W / 7.5, H / 4.5);
+      mctx.font = `400 ${fontSize}px ${lobster.style.fontFamily}, cursive`;
       mctx.textAlign = "center";
       mctx.textBaseline = "middle";
       mctx.lineJoin = "round";
-      mctx.lineWidth = fontSize * 0.06;
+      mctx.lineWidth = fontSize * 0.04;
       mctx.strokeStyle = "#fff";
       mctx.fillStyle = "#fff";
       mctx.fillText("Lonely Girl", W / 2, H / 2);
@@ -111,11 +111,22 @@ export default function StaticIntro({
         } else {
           r = g = b = 105 + v * 125;
         }
-        if (Math.random() < 0.07) {
+        if (Math.random() < 0.2) {
           const c = Math.random();
-          if (c < 0.34) r = Math.min(255, r + 90);
-          else if (c < 0.67) g = Math.min(255, g + 75);
-          else b = Math.min(255, b + 100);
+          const amt = inText ? 55 : 110;
+          if (c < 0.2) r = Math.min(255, r + amt);
+          else if (c < 0.4) g = Math.min(255, g + amt);
+          else if (c < 0.6) b = Math.min(255, b + amt);
+          else if (c < 0.75) {
+            r = Math.min(255, r + amt);
+            b = Math.min(255, b + amt);
+          } else if (c < 0.9) {
+            g = Math.min(255, g + amt);
+            b = Math.min(255, b + amt);
+          } else {
+            r = Math.min(255, r + amt);
+            g = Math.min(255, g + amt * 0.7);
+          }
         }
         d[o] = r;
         d[o + 1] = g;
