@@ -1,13 +1,17 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Baloo_2 } from "next/font/google";
+import { Pacifico } from "next/font/google";
 
-const baloo = Baloo_2({ subsets: ["latin"], weight: "800" });
+const pacifico = Pacifico({ subsets: ["latin"], weight: "400" });
 
-const HOLD_MS = 2600; // how long the full static holds
-const REVEAL_MS = 1800; // how long the fade-from-middle takes
+const HOLD_MS = 2600; // full static hold
+const REVEAL_MS = 2000; // window over which chunks get released
+const FALL_MS = 750; // how long a released chunk falls before it's gone
 const SCALE = 3; // noise chunkiness (bigger = chunkier pixels)
+const CELL = 10; // size of falling chunks, in low-res pixels
+
+type Cell = { x: number; y: number; release: number };
 
 export default function StaticIntro({
   children,
@@ -31,58 +35,82 @@ export default function StaticIntro({
     let W = 0;
     let H = 0;
     let mask: Uint8ClampedArray | null = null;
+    let cells: Cell[] = [];
     let raf = 0;
     let stopped = false;
     const start = performance.now();
 
-    const buildMask = () => {
+    const noiseCanvas = document.createElement("canvas");
+    const nctx = noiseCanvas.getContext("2d");
+
+    const build = () => {
       W = Math.ceil(window.innerWidth / SCALE);
       H = Math.ceil(window.innerHeight / SCALE);
       canvas.width = W;
       canvas.height = H;
+      noiseCanvas.width = W;
+      noiseCanvas.height = H;
 
+      // Text mask — cursive bubble script, thin plump stroke so the
+      // counters (the holes in o, e, g...) stay open.
       const m = document.createElement("canvas");
       m.width = W;
       m.height = H;
       const mctx = m.getContext("2d");
       if (!mctx) return;
-
-      const fontSize = Math.min(W / 6.4, H / 3.2);
-      mctx.font = `800 ${fontSize}px ${baloo.style.fontFamily}, "Arial Rounded MT Bold", sans-serif`;
+      const fontSize = Math.min(W / 8, H / 4.8);
+      mctx.font = `400 ${fontSize}px ${pacifico.style.fontFamily}, cursive`;
       mctx.textAlign = "center";
       mctx.textBaseline = "middle";
       mctx.lineJoin = "round";
-      mctx.lineWidth = fontSize * 0.22; // fattens letters into bubbles
+      mctx.lineWidth = fontSize * 0.06;
       mctx.strokeStyle = "#fff";
       mctx.fillStyle = "#fff";
-      mctx.strokeText("Lonely Girl", W / 2, H / 2);
       mctx.fillText("Lonely Girl", W / 2, H / 2);
+      mctx.strokeText("Lonely Girl", W / 2, H / 2);
       mask = mctx.getImageData(0, 0, W, H).data;
+
+      // Falling chunks: released from the centre outwards, with jitter.
+      cells = [];
+      const maxDist = Math.hypot(W / 2, H / 2);
+      for (let cy = 0; cy < H; cy += CELL) {
+        for (let cx = 0; cx < W; cx += CELL) {
+          const d = Math.hypot(cx + CELL / 2 - W / 2, cy + CELL / 2 - H / 2);
+          cells.push({
+            x: cx,
+            y: cy,
+            release:
+              HOLD_MS +
+              (d / maxDist) * REVEAL_MS * 0.65 +
+              Math.random() * REVEAL_MS * 0.35,
+          });
+        }
+      }
     };
 
-    buildMask();
-    // Rebuild once the bubble font has actually loaded
+    build();
     document.fonts?.ready.then(() => {
-      if (!stopped) buildMask();
+      if (!stopped) build();
     });
-    window.addEventListener("resize", buildMask);
+    window.addEventListener("resize", build);
 
     const draw = (now: number) => {
-      if (stopped) return;
-      const img = ctx.createImageData(W, H);
+      if (stopped || !nctx) return;
+      const t = now - start;
+
+      // Fresh static frame on the offscreen canvas
+      const img = nctx.createImageData(W, H);
       const d = img.data;
       for (let i = 0; i < W * H; i++) {
         const o = i * 4;
         const inText = mask !== null && mask[o + 3] > 128;
         const v = Math.random();
-        // Background: grey-ish static. Text: much blacker static.
         let r: number, g: number, b: number;
         if (inText) {
           r = g = b = 5 + v * 65;
         } else {
           r = g = b = 105 + v * 125;
         }
-        // Occasional colour flecks mixed into the grey
         if (Math.random() < 0.07) {
           const c = Math.random();
           if (c < 0.34) r = Math.min(255, r + 90);
@@ -94,34 +122,39 @@ export default function StaticIntro({
         d[o + 2] = b;
         d[o + 3] = 255;
       }
-      ctx.putImageData(img, 0, 0);
+      nctx.putImageData(img, 0, 0);
 
-      // Fade out from the middle after the hold
-      const t = now - start;
-      if (t > HOLD_MS) {
-        const p = Math.min(1, (t - HOLD_MS) / REVEAL_MS);
-        const ease = p * p * (3 - 2 * p);
-        const maxR = Math.hypot(W / 2, H / 2) * 1.15;
-        const rOut = ease * maxR;
-        const grad = ctx.createRadialGradient(
-          W / 2,
-          H / 2,
-          Math.max(0, rOut * 0.7),
-          W / 2,
-          H / 2,
-          rOut
-        );
-        grad.addColorStop(0, "rgba(0,0,0,1)");
-        grad.addColorStop(1, "rgba(0,0,0,0)");
-        ctx.globalCompositeOperation = "destination-out";
-        ctx.fillStyle = grad;
-        ctx.fillRect(0, 0, W, H);
-        ctx.globalCompositeOperation = "source-over";
-        if (p >= 1) {
-          stopped = true;
-          setGone(true);
-          return;
+      // Composite: intact chunks in place, released chunks fall and fade
+      ctx.clearRect(0, 0, W, H);
+      let remaining = 0;
+      for (const c of cells) {
+        const dt = t - c.release;
+        if (dt <= 0) {
+          ctx.drawImage(noiseCanvas, c.x, c.y, CELL, CELL, c.x, c.y, CELL, CELL);
+          remaining++;
+        } else if (dt < FALL_MS) {
+          const s = dt / 1000;
+          const dy = 1600 * s * s + 60 * s; // gravity + a little initial push
+          ctx.globalAlpha = 1 - dt / FALL_MS;
+          ctx.drawImage(
+            noiseCanvas,
+            c.x,
+            c.y,
+            CELL,
+            CELL,
+            c.x,
+            c.y + dy,
+            CELL,
+            CELL
+          );
+          ctx.globalAlpha = 1;
+          remaining++;
         }
+      }
+      if (remaining === 0 && t > HOLD_MS) {
+        stopped = true;
+        setGone(true);
+        return;
       }
       raf = requestAnimationFrame(draw);
     };
@@ -130,7 +163,7 @@ export default function StaticIntro({
     return () => {
       stopped = true;
       cancelAnimationFrame(raf);
-      window.removeEventListener("resize", buildMask);
+      window.removeEventListener("resize", build);
     };
   }, []);
 
