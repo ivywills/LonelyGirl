@@ -153,3 +153,21 @@ a {
 a:hover {
   text-decoration: underline;
 }
+
+.tv-btn .tv-screen {
+  transition: box-shadow 0.25s ease;
+}
+
+.tv-btn .tv-screen canvas {
+  transition: filter 0.25s ease;
+}
+
+.tv-btn:hover .tv-screen,
+.tv-btn:focus-visible .tv-screen {
+  box-shadow: 0 0 26px 6px var(--glow, rgba(167, 139, 250, 0.5));
+}
+
+.tv-btn:hover .tv-screen canvas,
+.tv-btn:focus-visible .tv-screen canvas {
+  filter: brightness(1.45) saturate(1.3);
+}

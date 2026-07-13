@@ -230,7 +230,9 @@ function Tv({
     <button
       aria-label="Old television — sign up or log in"
       onClick={onClick}
+      className="tv-btn"
       style={{
+        ["--glow" as string]: `${t.acc1}88`,
         position: "absolute",
         left: pos.x,
         top: pos.y,
@@ -285,7 +287,10 @@ function Tv({
           boxSizing: "border-box",
         }}
       >
-        <div style={{ position: "relative", width: cvSize.w, height: cvSize.h }}>
+        <div
+          className="tv-screen"
+          style={{ position: "relative", width: cvSize.w, height: cvSize.h, borderRadius: screenRadius }}
+        >
           <canvas
             ref={canvasRef}
             width={Math.max(14, Math.ceil(cvSize.w / NOISE_SCALE))}
