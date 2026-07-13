@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import StaticIntro from "@/app/static-intro";
 
 export default async function Home() {
   const supabase = await createClient();
@@ -8,7 +9,8 @@ export default async function Home() {
   } = await supabase.auth.getUser();
 
   return (
-    <main className="center">
+    <StaticIntro>
+      <main className="center">
       <div className="card" style={{ textAlign: "center" }}>
         <h1>LonelyGirl</h1>
         <p className="sub">Coming soon.</p>
@@ -23,6 +25,7 @@ export default async function Home() {
           </p>
         )}
       </div>
-    </main>
+      </main>
+    </StaticIntro>
   );
 }
