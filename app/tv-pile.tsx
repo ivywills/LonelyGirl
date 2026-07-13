@@ -480,20 +480,16 @@ function Tv({
 }
 
 const MOBILE_W = 220;
-const MOBILE_H = 940;
-// Single tower, widest at the bottom: y positions top to bottom
+const MOBILE_H = 600;
+// Single tower of four, widest at the bottom, antenna set on top
 const MOBILE_POS: Record<string, { x: number; y: number }> = {
-  h: { x: 60, y: 20 },
-  f: { x: 56, y: 96 },
-  d: { x: 52, y: 180 },
-  e: { x: 40, y: 270 },
-  g: { x: 36, y: 376 },
-  c: { x: 28, y: 488 },
-  b: { x: 24, y: 606 },
-  a: { x: 10, y: 738 },
+  e: { x: 40, y: 60 },
+  g: { x: 36, y: 166 },
+  c: { x: 28, y: 278 },
+  a: { x: 10, y: 396 },
 };
 // Draw bottom TVs first so upper cabinets sit cleanly over lower top faces
-const MOBILE_DOM_ORDER = ["a", "b", "c", "g", "e", "d", "f", "h"];
+const MOBILE_DOM_ORDER = ["a", "c", "g", "e"];
 
 export default function TvPile({ signedIn }: { signedIn: boolean }) {
   const router = useRouter();
