@@ -205,7 +205,7 @@ function Tv({
   canvasRef,
 }: {
   t: TvDef;
-  pos: { x: number; y: number };
+  pos: { x: number; y: number; rot?: number; legs?: boolean };
   floor: boolean;
   onClick: () => void;
   canvasRef: (el: HTMLCanvasElement | null) => void;
@@ -232,6 +232,7 @@ function Tv({
         top: pos.y,
         width: t.w,
         height: t.h,
+        transform: pos.rot ? `rotate(${pos.rot}deg)` : undefined,
         padding: 0,
         background: t.body,
         borderRadius: 6,
@@ -414,7 +415,7 @@ function Tv({
           }}
         />
       ))}
-      {t.type === "console" &&
+      {(t.type === "console" || pos.legs) &&
         ["10%", "84%"].map((l) => (
           <div
             key={l}
@@ -481,12 +482,13 @@ function Tv({
 
 const MOBILE_W = 220;
 const MOBILE_H = 600;
-// Single tower of four, widest at the bottom, antenna set on top
-const MOBILE_POS: Record<string, { x: number; y: number }> = {
-  e: { x: 40, y: 60 },
-  g: { x: 36, y: 166 },
-  c: { x: 28, y: 278 },
-  a: { x: 10, y: 396 },
+// Single tower of four, widest at the bottom, antenna set on top.
+// Slight tilts + the pink set standing on its own legs keep it casual.
+const MOBILE_POS: Record<string, { x: number; y: number; rot: number; legs?: boolean }> = {
+  e: { x: 44, y: 54, rot: 1.5 },
+  g: { x: 32, y: 160, rot: -2 },
+  c: { x: 30, y: 272, rot: 1.5, legs: true },
+  a: { x: 10, y: 410, rot: -1 },
 };
 // Draw bottom TVs first so upper cabinets sit cleanly over lower top faces
 const MOBILE_DOM_ORDER = ["a", "c", "g", "e"];
@@ -611,7 +613,7 @@ export default function TvPile({ signedIn }: { signedIn: boolean }) {
               key={t.id}
               t={t}
               pos={mobile ? MOBILE_POS[t.id] : { x: t.x, y: t.y }}
-              floor={mobile ? t.id === "a" : !!t.floor}
+              floor={mobile ? t.id === "a" || !!MOBILE_POS[t.id]?.legs : !!t.floor}
               onClick={() => handleClick(t)}
               canvasRef={(el) => {
                 canvases.current[i] = el;
