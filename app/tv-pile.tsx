@@ -420,6 +420,186 @@ function Tv({
           }}
         />
       ))}
+      {t.id === "a" && (
+        <>
+          <div
+            style={{
+              position: "absolute",
+              inset: 5,
+              border: "1px solid rgba(216,179,106,0.28)",
+              borderRadius: 4,
+              pointerEvents: "none",
+            }}
+          />
+          <div
+            style={{
+              position: "absolute",
+              left: pad,
+              bottom: 3,
+              width: scrW,
+              height: 6,
+              background: "linear-gradient(90deg, rgba(216,179,106,0.55), rgba(216,179,106,0.12))",
+              borderRadius: 2,
+            }}
+          />
+        </>
+      )}
+      {t.id === "b" && (
+        <>
+          <div
+            style={{
+              position: "absolute",
+              left: 6,
+              right: 6,
+              bottom: 2,
+              height: 3,
+              background: "linear-gradient(180deg, #9aa2b5, #5a6172)",
+              borderRadius: 2,
+            }}
+          />
+          <div style={{ position: "absolute", left: pad, bottom: 7, display: "flex", gap: 4 }}>
+            {["#c0392b", "#e8e4da", "#e0c56a"].map((c) => (
+              <div
+                key={c}
+                style={{
+                  width: 5,
+                  height: 5,
+                  borderRadius: "50%",
+                  background: c,
+                  border: "1px solid rgba(0,0,0,0.65)",
+                }}
+              />
+            ))}
+          </div>
+        </>
+      )}
+      {t.id === "c" && (
+        <svg
+          width="20"
+          height="20"
+          style={{ position: "absolute", left: pad, bottom: 2, overflow: "visible" }}
+        >
+          <g stroke={t.acc1} strokeWidth="1.5" strokeLinecap="round">
+            <line x1="10" y1="1" x2="10" y2="19" />
+            <line x1="1" y1="10" x2="19" y2="10" />
+            <line x1="4" y1="4" x2="16" y2="16" />
+            <line x1="16" y1="4" x2="4" y2="16" />
+          </g>
+          <circle cx="10" cy="10" r="2.5" fill={t.acc1} />
+        </svg>
+      )}
+      {t.id === "d" && (
+        <svg
+          width="34"
+          height="30"
+          style={{ position: "absolute", top: -27, right: 6, overflow: "visible", pointerEvents: "none" }}
+        >
+          <line x1="6" y1="29" x2="30" y2="3" stroke="#8a8498" strokeWidth="2" strokeLinecap="round" />
+          <line x1="6" y1="29" x2="18" y2="16" stroke="#b6b0c4" strokeWidth="3" strokeLinecap="round" />
+          <circle cx="30" cy="3" r="2.5" fill={t.acc1} />
+        </svg>
+      )}
+      {t.id === "f" && (
+        <>
+          <div
+            style={{
+              position: "absolute",
+              right: -4,
+              top: "38%",
+              width: 7,
+              height: 20,
+              borderRadius: 3,
+              background: sh(t.body, 0.7),
+              border: "1px solid rgba(255,255,255,0.22)",
+              backgroundImage:
+                "repeating-linear-gradient(0deg, rgba(0,0,0,0.45) 0 1.5px, transparent 1.5px 4px)",
+            }}
+          />
+          <div
+            style={{
+              position: "absolute",
+              left: pad + 2,
+              bottom: 3,
+              width: 9,
+              height: 9,
+              borderRadius: "50%",
+              background: `radial-gradient(circle at 35% 30%, ${sh(t.acc1, 1.25)}, ${t.acc1} 70%)`,
+              border: "2px solid rgba(0,0,0,0.55)",
+            }}
+          />
+        </>
+      )}
+      {t.id === "g" && (
+        <>
+          {[45, 135, 225, 315].map((deg) => {
+            const bezSize = Math.min(scrW, scrH) + 8;
+            const cxq = pad + (scrW - bezSize) / 2 + 4 + bezSize / 2;
+            const cyq = pad + (scrH - bezSize) / 2 + bezSize / 2;
+            const rr = bezSize / 2 - 2;
+            const px = cxq + rr * Math.cos((deg * Math.PI) / 180);
+            const py = cyq + rr * Math.sin((deg * Math.PI) / 180);
+            return (
+              <div
+                key={deg}
+                style={{
+                  position: "absolute",
+                  left: px - 2,
+                  top: py - 2,
+                  width: 4,
+                  height: 4,
+                  borderRadius: "50%",
+                  background: "#b6b0c4",
+                  border: "1px solid rgba(0,0,0,0.6)",
+                }}
+              />
+            );
+          })}
+          <div
+            style={{
+              position: "absolute",
+              left: 3,
+              top: "32%",
+              display: "flex",
+              flexDirection: "column",
+              gap: 3,
+            }}
+          >
+            {[0, 1, 2, 3].map((i) => (
+              <div key={i} style={{ width: 6, height: 2, background: "rgba(0,0,0,0.5)", borderRadius: 1 }} />
+            ))}
+          </div>
+        </>
+      )}
+      {t.id === "h" && (
+        <>
+          {["16%", "74%"].map((l) => (
+            <div
+              key={l}
+              style={{
+                position: "absolute",
+                top: "100%",
+                left: l,
+                width: 10,
+                height: 3,
+                background: "#0d0b10",
+                borderRadius: "0 0 2px 2px",
+              }}
+            />
+          ))}
+          <div
+            style={{
+              position: "absolute",
+              left: pad + 1,
+              bottom: 3,
+              width: 4,
+              height: 4,
+              borderRadius: "50%",
+              background: "#e24b4a",
+              boxShadow: "0 0 3px #e24b4a",
+            }}
+          />
+        </>
+      )}
       {(t.type === "console" || pos.legs) &&
         ["10%", "84%"].map((l) => (
           <div
@@ -493,6 +673,7 @@ function Tv({
         >
           <line x1="50" y1="50" x2="14" y2="4" stroke="#8a8498" strokeWidth="2.5" strokeLinecap="round" />
           <line x1="50" y1="50" x2="86" y2="2" stroke="#8a8498" strokeWidth="2.5" strokeLinecap="round" />
+          <circle cx="50" cy="22" r="9" fill="none" stroke="#8a8498" strokeWidth="2" />
           <circle cx="14" cy="4" r="3" fill="#b9a5f7" />
           <circle cx="86" cy="2" r="3" fill="#ef99c2" />
           <rect x="40" y="42" width="20" height="10" rx="3" fill="#8a8498" stroke="rgba(0,0,0,0.4)" />
