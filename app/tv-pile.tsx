@@ -283,8 +283,10 @@ function Tv({
           [0.1, 0.84].map((f) => (
             <polygon
               key={f}
-              points={`${f * t.w + DX},${t.h - 2} ${f * t.w + DX + 11},${t.h - 2} ${f * t.w + DX + 8},${t.h + 15 - DY} ${f * t.w + DX - 3},${t.h + 15 - DY}`}
-              fill="#140c05"
+              points={`${f * t.w + DX + 4},${t.h - 2} ${f * t.w + DX + 15},${t.h - 2} ${f * t.w + DX + 12},${t.h + 21 - DY} ${f * t.w + DX + 1},${t.h + 21 - DY}`}
+              fill="#33200d"
+              stroke="rgba(255,255,255,0.14)"
+              strokeWidth="0.5"
             />
           ))}
       </svg>
