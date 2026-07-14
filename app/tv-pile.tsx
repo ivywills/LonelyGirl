@@ -31,13 +31,13 @@ type TvDef = {
 };
 
 const TVS: TvDef[] = [
-  { id: "b", x: 10, y: 468, w: 172, h: 132, body: "#7a5c3d", panel: "#6a4e33", bezel: "#201812", acc1: "#8fb1ff", acc2: "#e0c56a", type: "panel", controls: "sliders", screen: "rect", floor: true, wood: true },
+  { id: "b", x: 10, y: 468, w: 172, h: 132, body: "#43547c", panel: "#38466a", bezel: "#141c2e", acc1: "#8fb1ff", acc2: "#e0c56a", type: "panel", controls: "sliders", screen: "rect", floor: true },
   { id: "f", x: 36, y: 387, w: 108, h: 84, body: "#6b4060", panel: "#cfc4b4", bezel: "#20121c", acc1: "#e8955c", acc2: "#6b4060", type: "portable", controls: "dials", screen: "rect" },
   { id: "a", x: 190, y: 426, w: 200, h: 152, body: "#6b5138", panel: "#59422f", bezel: "#1c140d", acc1: "#d8b36a", acc2: "#b9a5f7", type: "console", wood: true, controls: "dials", screen: "rect", floor: true },
   { id: "c", x: 211, y: 311, w: 164, h: 118, body: "#5d4252", panel: "#4f3743", bezel: "#1d1218", acc1: "#ef99c2", acc2: "#8fb1ff", type: "plain", controls: "sliders", screen: "rect" },
   { id: "e", x: 226, y: 208, w: 140, h: 106, body: "#504870", panel: "#443c5e", bezel: "#191426", acc1: "#b9a5f7", acc2: "#ef99c2", type: "antenna", controls: "dials", screen: "rect", shape: "arch" },
   { id: "g", x: 396, y: 488, w: 148, h: 112, body: "#446463", panel: "#375252", bezel: "#101c1c", acc1: "#7de3d0", acc2: "#e0c56a", type: "plain", controls: "toggles", screen: "round", floor: true },
-  { id: "h", x: 418, y: 395, w: 100, h: 96, body: "#595272", panel: "#3d3852", bezel: "#191627", acc1: "#b9a5f7", acc2: "#ef99c2", type: "plain", controls: "toggles", screen: "round", shape: "egg" },
+  { id: "h", x: 418, y: 380, w: 100, h: 96, body: "#595272", panel: "#3d3852", bezel: "#191627", acc1: "#b9a5f7", acc2: "#ef99c2", type: "plain", controls: "toggles", screen: "round", shape: "egg" },
   { id: "d", x: 560, y: 510, w: 116, h: 90, body: "#48587c", panel: "#3c4a6a", bezel: "#141c2e", acc1: "#7de3d0", acc2: "#8fb1ff", type: "plain", controls: "buttons", screen: "rect", floor: true },
 ];
 
@@ -217,8 +217,9 @@ function Tv({
   const inset = Math.max(4, Math.round(t.h * 0.05));
   const round = t.screen === "round";
   const dsz = Math.min(scrW, scrH) + 8;
+  const roundScreen = egg ? eggSize - 14 : Math.min(scrW, scrH) - 4;
   const cvSize = round
-    ? { w: Math.min(scrW, scrH) - 4, h: Math.min(scrW, scrH) - 4 }
+    ? { w: roundScreen, h: roundScreen }
     : { w: scrW - 2 * inset, h: scrH - 2 * inset };
   const cx = pad + scrW + 6;
   const cw = t.w - cx - pad;
@@ -233,6 +234,7 @@ function Tv({
   const showLegs = t.type === "console" || !!pos.legs;
   const egg = t.shape === "egg";
   const arch = t.shape === "arch";
+  const eggSize = Math.round(Math.min(t.w, t.h) * 0.8);
 
   return (
     <button
@@ -323,10 +325,10 @@ function Tv({
       <div
         style={{
           position: "absolute",
-          left: egg ? (t.w - dsz) / 2 : round ? pad + (scrW - dsz) / 2 + 4 : pad,
-          top: egg ? Math.round(t.h * 0.09) : round ? pad + (scrH - dsz) / 2 : pad,
-          width: round ? dsz : scrW,
-          height: round ? dsz : scrH,
+          left: egg ? (t.w - eggSize) / 2 : round ? pad + (scrW - dsz) / 2 + 4 : pad,
+          top: egg ? Math.round(t.h * 0.1) : round ? pad + (scrH - dsz) / 2 : pad,
+          width: egg ? eggSize : round ? dsz : scrW,
+          height: egg ? eggSize : round ? dsz : scrH,
           background: t.bezel,
           borderRadius: round ? "50%" : arch ? "32px 32px 9px 9px" : 9,
           border: "1px solid rgba(0,0,0,0.7)",
@@ -383,27 +385,38 @@ function Tv({
           <div
             style={{
               position: "absolute",
-              bottom: Math.round(t.h * 0.04),
+              top: -7,
               left: "50%",
               transform: "translateX(-50%)",
-              display: "flex",
-              gap: 10,
-              alignItems: "flex-start",
+              width: 18,
+              height: 8,
+              borderRadius: "9px 9px 2px 2px",
+              background: sh(t.body, 1.3),
+              border: "1px solid rgba(255,255,255,0.2)",
+              borderBottom: "none",
             }}
-          >
-            <Dial size={13} color={t.acc1} angle={28} />
-            <Dial size={13} color={t.acc2} angle={-40} />
-          </div>
+          />
           <div
             style={{
               position: "absolute",
               top: "100%",
-              left: "32%",
-              right: "32%",
-              height: 13,
-              background: sh(t.body, 0.55),
-              clipPath: "polygon(10% 0, 90% 0, 100% 100%, 0 100%)",
-              borderRadius: 2,
+              left: "50%",
+              transform: "translateX(-50%)",
+              width: 14,
+              height: 7,
+              background: `linear-gradient(180deg, ${sh(t.body, 0.6)}, ${sh(t.body, 0.4)})`,
+            }}
+          />
+          <div
+            style={{
+              position: "absolute",
+              top: "calc(100% + 6px)",
+              left: "24%",
+              right: "24%",
+              height: 9,
+              borderRadius: "50%",
+              background: `radial-gradient(ellipse at 40% 30%, ${sh(t.body, 0.75)}, ${sh(t.body, 0.4)})`,
+              border: "1px solid rgba(255,255,255,0.14)",
             }}
           />
         </>
@@ -671,8 +684,8 @@ function Tv({
         <div
           style={{
             position: "absolute",
-            left: "22%",
-            bottom: "16%",
+            left: "47%",
+            bottom: "4%",
             width: 4,
             height: 4,
             borderRadius: "50%",
