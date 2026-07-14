@@ -31,14 +31,14 @@ type TvDef = {
 };
 
 const TVS: TvDef[] = [
-  { id: "b", x: 10, y: 468, w: 172, h: 132, body: "#34425f", panel: "#2b3750", bezel: "#121a2b", acc1: "#8fb1ff", acc2: "#e0c56a", type: "panel", controls: "sliders", screen: "rect", floor: true },
-  { id: "f", x: 36, y: 387, w: 108, h: 84, body: "#5a3350", panel: "#cfc4b4", bezel: "#20121c", acc1: "#e8955c", acc2: "#5a3350", type: "portable", controls: "dials", screen: "rect" },
-  { id: "a", x: 190, y: 426, w: 200, h: 152, body: "#5a4330", panel: "#4a3628", bezel: "#1c140d", acc1: "#d8b36a", acc2: "#b9a5f7", type: "console", wood: true, controls: "dials", screen: "rect", floor: true },
-  { id: "c", x: 211, y: 311, w: 164, h: 118, body: "#4d3542", panel: "#412c37", bezel: "#1d1218", acc1: "#ef99c2", acc2: "#8fb1ff", type: "plain", controls: "sliders", screen: "rect" },
-  { id: "e", x: 226, y: 208, w: 140, h: 106, body: "#423a5c", panel: "#37304e", bezel: "#191426", acc1: "#b9a5f7", acc2: "#ef99c2", type: "antenna", controls: "dials", screen: "rect", shape: "arch" },
-  { id: "g", x: 396, y: 488, w: 148, h: 112, body: "#375152", panel: "#2c4243", bezel: "#101c1c", acc1: "#7de3d0", acc2: "#e0c56a", type: "plain", controls: "toggles", screen: "round", floor: true },
-  { id: "h", x: 418, y: 395, w: 100, h: 96, body: "#4a4460", panel: "#3d3852", bezel: "#191627", acc1: "#b9a5f7", acc2: "#ef99c2", type: "plain", controls: "toggles", screen: "round", shape: "egg" },
-  { id: "d", x: 560, y: 510, w: 116, h: 90, body: "#3a4868", panel: "#303c58", bezel: "#141c2e", acc1: "#7de3d0", acc2: "#8fb1ff", type: "plain", controls: "buttons", screen: "rect", floor: true },
+  { id: "b", x: 10, y: 468, w: 172, h: 132, body: "#7a5c3d", panel: "#6a4e33", bezel: "#201812", acc1: "#8fb1ff", acc2: "#e0c56a", type: "panel", controls: "sliders", screen: "rect", floor: true, wood: true },
+  { id: "f", x: 36, y: 387, w: 108, h: 84, body: "#6b4060", panel: "#cfc4b4", bezel: "#20121c", acc1: "#e8955c", acc2: "#6b4060", type: "portable", controls: "dials", screen: "rect" },
+  { id: "a", x: 190, y: 426, w: 200, h: 152, body: "#6b5138", panel: "#59422f", bezel: "#1c140d", acc1: "#d8b36a", acc2: "#b9a5f7", type: "console", wood: true, controls: "dials", screen: "rect", floor: true },
+  { id: "c", x: 211, y: 311, w: 164, h: 118, body: "#5d4252", panel: "#4f3743", bezel: "#1d1218", acc1: "#ef99c2", acc2: "#8fb1ff", type: "plain", controls: "sliders", screen: "rect" },
+  { id: "e", x: 226, y: 208, w: 140, h: 106, body: "#504870", panel: "#443c5e", bezel: "#191426", acc1: "#b9a5f7", acc2: "#ef99c2", type: "antenna", controls: "dials", screen: "rect", shape: "arch" },
+  { id: "g", x: 396, y: 488, w: 148, h: 112, body: "#446463", panel: "#375252", bezel: "#101c1c", acc1: "#7de3d0", acc2: "#e0c56a", type: "plain", controls: "toggles", screen: "round", floor: true },
+  { id: "h", x: 418, y: 395, w: 100, h: 96, body: "#595272", panel: "#3d3852", bezel: "#191627", acc1: "#b9a5f7", acc2: "#ef99c2", type: "plain", controls: "toggles", screen: "round", shape: "egg" },
+  { id: "d", x: 560, y: 510, w: 116, h: 90, body: "#48587c", panel: "#3c4a6a", bezel: "#141c2e", acc1: "#7de3d0", acc2: "#8fb1ff", type: "plain", controls: "buttons", screen: "rect", floor: true },
 ];
 
 function sh(hex: string, f: number) {
@@ -423,11 +423,17 @@ function Tv({
         }}
       >
         <Controls t={t} />
-        <div style={{ display: "flex", gap: 3, justifyContent: "center", marginTop: 5 }}>
+        <div style={{ display: "flex", gap: cw < 28 ? 2 : 3, justifyContent: "center", marginTop: 5 }}>
           {[t.acc1, t.acc2, "#d8b36a"].map((c, i) => (
             <div
               key={i}
-              style={{ width: 6, height: 6, borderRadius: 2, background: c, border: "1px solid rgba(0,0,0,0.5)" }}
+              style={{
+                width: cw < 28 ? 4 : 6,
+                height: cw < 28 ? 4 : 6,
+                borderRadius: cw < 28 ? 1 : 2,
+                background: c,
+                border: "1px solid rgba(0,0,0,0.5)",
+              }}
             />
           ))}
         </div>
