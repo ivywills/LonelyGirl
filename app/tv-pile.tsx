@@ -39,6 +39,8 @@ const TVS: TvDef[] = [
   { id: "g", x: 396, y: 488, w: 148, h: 112, body: "#4f7371", panel: "#416060", bezel: "#101c1c", acc1: "#7de3d0", acc2: "#e0c56a", type: "plain", controls: "toggles", screen: "round", floor: true },
   { id: "h", x: 418, y: 415, w: 100, h: 76, body: "#665e82", panel: "#474162", bezel: "#191627", acc1: "#b9a5f7", acc2: "#ef99c2", type: "plain", controls: "toggles", screen: "rect" },
   { id: "d", x: 560, y: 510, w: 116, h: 90, body: "#53648c", panel: "#465877", bezel: "#141c2e", acc1: "#7de3d0", acc2: "#8fb1ff", type: "plain", controls: "buttons", screen: "rect", floor: true },
+  { id: "i", x: 44, y: 322, w: 92, h: 68, body: "#79aad4", panel: "#6795bd", bezel: "#16222e", acc1: "#ffe08a", acc2: "#eaf3fb", type: "plain", controls: "sliders", screen: "rect" },
+  { id: "j", x: 570, y: 443, w: 96, h: 70, body: "#a98ce8", panel: "#9678d4", bezel: "#241a38", acc1: "#c77dff", acc2: "#f0e6ff", type: "plain", controls: "dials", screen: "rect" },
 ];
 
 function sh(hex: string, f: number) {
@@ -302,7 +304,7 @@ function Tv({
           [0.1, 0.84].map((f) => (
             <g key={f}>
               <polygon
-                points={`${f * t.w + 9},${t.h - 2} ${f * t.w + 20},${t.h - 2} ${f * t.w + 18},${t.h + 16} ${f * t.w + 7},${t.h + 16}`}
+                points={`${f * t.w + 9},${t.h - 1} ${f * t.w + 20},${t.h - 1} ${f * t.w + 18},${t.h + 16} ${f * t.w + 7},${t.h + 16}`}
                 fill="#221708"
                 stroke="rgba(255,255,255,0.16)"
                 strokeWidth="0.5"
