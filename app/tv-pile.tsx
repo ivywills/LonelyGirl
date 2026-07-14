@@ -31,14 +31,14 @@ type TvDef = {
 };
 
 const TVS: TvDef[] = [
-  { id: "b", x: 10, y: 468, w: 172, h: 132, body: "#43547c", panel: "#38466a", bezel: "#141c2e", acc1: "#8fb1ff", acc2: "#e0c56a", type: "panel", controls: "sliders", screen: "rect", floor: true },
-  { id: "f", x: 36, y: 387, w: 108, h: 84, body: "#6b4060", panel: "#cfc4b4", bezel: "#20121c", acc1: "#e8955c", acc2: "#6b4060", type: "portable", controls: "dials", screen: "rect" },
-  { id: "a", x: 190, y: 426, w: 200, h: 152, body: "#6b5138", panel: "#59422f", bezel: "#1c140d", acc1: "#d8b36a", acc2: "#b9a5f7", type: "console", wood: true, controls: "dials", screen: "rect", floor: true },
-  { id: "c", x: 211, y: 311, w: 164, h: 118, body: "#5d4252", panel: "#4f3743", bezel: "#1d1218", acc1: "#ef99c2", acc2: "#8fb1ff", type: "plain", controls: "sliders", screen: "rect" },
-  { id: "e", x: 226, y: 208, w: 140, h: 106, body: "#504870", panel: "#443c5e", bezel: "#191426", acc1: "#b9a5f7", acc2: "#ef99c2", type: "antenna", controls: "dials", screen: "rect", shape: "arch" },
-  { id: "g", x: 396, y: 488, w: 148, h: 112, body: "#446463", panel: "#375252", bezel: "#101c1c", acc1: "#7de3d0", acc2: "#e0c56a", type: "plain", controls: "toggles", screen: "round", floor: true },
-  { id: "h", x: 418, y: 380, w: 100, h: 96, body: "#595272", panel: "#3d3852", bezel: "#191627", acc1: "#b9a5f7", acc2: "#ef99c2", type: "plain", controls: "toggles", screen: "round", shape: "egg" },
-  { id: "d", x: 560, y: 510, w: 116, h: 90, body: "#48587c", panel: "#3c4a6a", bezel: "#141c2e", acc1: "#7de3d0", acc2: "#8fb1ff", type: "plain", controls: "buttons", screen: "rect", floor: true },
+  { id: "b", x: 10, y: 468, w: 172, h: 132, body: "#4d608c", panel: "#415178", bezel: "#141c2e", acc1: "#8fb1ff", acc2: "#e0c56a", type: "panel", controls: "sliders", screen: "rect", floor: true },
+  { id: "f", x: 36, y: 387, w: 108, h: 84, body: "#7a4b6e", panel: "#cfc4b4", bezel: "#20121c", acc1: "#e8955c", acc2: "#7a4b6e", type: "portable", controls: "dials", screen: "rect" },
+  { id: "a", x: 190, y: 426, w: 200, h: 152, body: "#7a5e42", panel: "#664d38", bezel: "#1c140d", acc1: "#d8b36a", acc2: "#b9a5f7", type: "console", wood: true, controls: "dials", screen: "rect", floor: true },
+  { id: "c", x: 211, y: 311, w: 164, h: 118, body: "#6b4d5f", panel: "#5b414e", bezel: "#1d1218", acc1: "#ef99c2", acc2: "#8fb1ff", type: "plain", controls: "sliders", screen: "rect" },
+  { id: "e", x: 226, y: 208, w: 140, h: 106, body: "#5c5480", panel: "#4f476c", bezel: "#191426", acc1: "#b9a5f7", acc2: "#ef99c2", type: "antenna", controls: "dials", screen: "rect", shape: "arch" },
+  { id: "g", x: 396, y: 488, w: 148, h: 112, body: "#4f7371", panel: "#416060", bezel: "#101c1c", acc1: "#7de3d0", acc2: "#e0c56a", type: "plain", controls: "toggles", screen: "round", floor: true },
+  { id: "h", x: 418, y: 415, w: 100, h: 76, body: "#665e82", panel: "#474162", bezel: "#191627", acc1: "#b9a5f7", acc2: "#ef99c2", type: "plain", controls: "toggles", screen: "rect" },
+  { id: "d", x: 560, y: 510, w: 116, h: 90, body: "#53648c", panel: "#465877", bezel: "#141c2e", acc1: "#7de3d0", acc2: "#8fb1ff", type: "plain", controls: "buttons", screen: "rect", floor: true },
 ];
 
 function sh(hex: string, f: number) {
@@ -681,18 +681,34 @@ function Tv({
         </>
       )}
       {t.id === "h" && (
-        <div
-          style={{
-            position: "absolute",
-            left: "47%",
-            bottom: "4%",
-            width: 4,
-            height: 4,
-            borderRadius: "50%",
-            background: "#e24b4a",
-            boxShadow: "0 0 3px #e24b4a",
-          }}
-        />
+        <>
+          {["16%", "74%"].map((l) => (
+            <div
+              key={l}
+              style={{
+                position: "absolute",
+                top: "100%",
+                left: l,
+                width: 10,
+                height: 3,
+                background: "#0d0b10",
+                borderRadius: "0 0 2px 2px",
+              }}
+            />
+          ))}
+          <div
+            style={{
+              position: "absolute",
+              left: pad + 1,
+              bottom: 3,
+              width: 4,
+              height: 4,
+              borderRadius: "50%",
+              background: "#e24b4a",
+              boxShadow: "0 0 3px #e24b4a",
+            }}
+          />
+        </>
       )}
       {showLegs &&
         ["10%", "84%"].map((l) => (
