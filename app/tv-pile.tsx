@@ -225,6 +225,7 @@ function Tv({
   const bodyBg = t.wood
     ? `repeating-linear-gradient(92deg, rgba(0,0,0,0.10) 0px, rgba(0,0,0,0.10) 2px, transparent 2px, transparent 9px), linear-gradient(180deg, ${sh(t.body, 1.12)}, ${t.body} 35%, ${sh(t.body, 0.9)})`
     : `linear-gradient(180deg, ${sh(t.body, 1.12)}, ${t.body} 35%, ${sh(t.body, 0.9)})`;
+  const showLegs = t.type === "console" || !!pos.legs;
 
   return (
     <button
@@ -246,6 +247,8 @@ function Tv({
         boxSizing: "border-box",
         cursor: "pointer",
         display: "block",
+        boxShadow:
+          "inset 0 -8px 10px -6px rgba(0,0,0,0.5), inset 0 2px 3px -1px rgba(255,255,255,0.1)",
       }}
     >
       <svg
@@ -265,10 +268,39 @@ function Tv({
           stroke="rgba(0,0,0,0.35)"
           strokeWidth="0.5"
         />
-        {!floor && (
-          <rect x="10" y={t.h - 1} width={t.w - 20} height="4" rx="2" fill="rgba(0,0,0,0.28)" />
-        )}
+        <line x1="4" y1="0.5" x2={t.w - 2} y2="0.5" stroke="rgba(255,255,255,0.2)" strokeWidth="1" />
+        {[0.3, 0.45, 0.6].map((f) => (
+          <rect
+            key={f}
+            x={t.w + 1}
+            y={t.h * f}
+            width={DX - 4}
+            height="2"
+            fill="rgba(0,0,0,0.35)"
+          />
+        ))}
+        {showLegs &&
+          [0.1, 0.84].map((f) => (
+            <polygon
+              key={f}
+              points={`${f * t.w + DX},${t.h - 2} ${f * t.w + DX + 11},${t.h - 2} ${f * t.w + DX + 8},${t.h + 15 - DY} ${f * t.w + DX - 3},${t.h + 15 - DY}`}
+              fill="#140c05"
+            />
+          ))}
       </svg>
+      {!floor && (
+        <div
+          style={{
+            position: "absolute",
+            left: 6,
+            right: 6,
+            top: "100%",
+            height: 9,
+            background: "radial-gradient(ellipse at 50% 0%, rgba(0,0,0,0.5), transparent 70%)",
+            pointerEvents: "none",
+          }}
+        />
+      )}
       <div
         style={{
           position: "absolute",
@@ -321,7 +353,7 @@ function Tv({
               inset: 0,
               borderRadius: screenRadius,
               background:
-                "radial-gradient(ellipse at 28% 22%, rgba(255,255,255,0.13), rgba(255,255,255,0.04) 32%, transparent 55%)",
+                "radial-gradient(ellipse at 28% 22%, rgba(255,255,255,0.13), rgba(255,255,255,0.04) 32%, transparent 55%), radial-gradient(ellipse at 50% 58%, rgba(255,255,255,0.05), transparent 65%)",
               pointerEvents: "none",
             }}
           />
@@ -600,7 +632,7 @@ function Tv({
           />
         </>
       )}
-      {(t.type === "console" || pos.legs) &&
+      {showLegs &&
         ["10%", "84%"].map((l) => (
           <div
             key={l}
@@ -818,7 +850,8 @@ export default function TvPile({ signedIn }: { signedIn: boolean }) {
               right: "3%",
               bottom: 14,
               height: 42,
-              background: "#17141f",
+              background:
+                "radial-gradient(ellipse at center, #201b2e 0%, #17141f 55%, rgba(23,20,31,0) 100%)",
               borderRadius: "50%",
             }}
           />
