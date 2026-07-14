@@ -24,6 +24,7 @@ type TvDef = {
   controls: "dials" | "sliders" | "buttons" | "toggles";
   screen: "rect" | "round";
   shape?: "egg" | "arch";
+  panelWood?: boolean;
   wood?: boolean;
   floor?: boolean;
   /** future: route this TV navigates to once real pages exist */
@@ -34,7 +35,7 @@ const TVS: TvDef[] = [
   { id: "b", x: 10, y: 468, w: 172, h: 132, body: "#79aad4", panel: "#6795bd", bezel: "#16222e", acc1: "#ffe08a", acc2: "#eaf3fb", type: "panel", controls: "sliders", screen: "rect", floor: true },
   { id: "f", x: 36, y: 387, w: 108, h: 84, body: "#7a4b6e", panel: "#cfc4b4", bezel: "#20121c", acc1: "#e8955c", acc2: "#7a4b6e", type: "portable", controls: "dials", screen: "rect" },
   { id: "a", x: 190, y: 426, w: 200, h: 152, body: "#7a5e42", panel: "#664d38", bezel: "#1c140d", acc1: "#d8b36a", acc2: "#b9a5f7", type: "console", wood: true, controls: "dials", screen: "rect", floor: true },
-  { id: "c", x: 211, y: 311, w: 164, h: 118, body: "#8a6a49", panel: "#76573b", bezel: "#1d1410", acc1: "#ef99c2", acc2: "#8fb1ff", type: "plain", controls: "sliders", screen: "rect", wood: true },
+  { id: "c", x: 211, y: 311, w: 164, h: 118, body: "#6b4d5f", panel: "#76573b", bezel: "#1d1218", acc1: "#ef99c2", acc2: "#8fb1ff", type: "plain", controls: "sliders", screen: "rect", panelWood: true },
   { id: "e", x: 226, y: 208, w: 140, h: 106, body: "#5c5480", panel: "#4f476c", bezel: "#191426", acc1: "#b9a5f7", acc2: "#ef99c2", type: "antenna", controls: "dials", screen: "rect", shape: "arch" },
   { id: "g", x: 396, y: 488, w: 148, h: 112, body: "#7fb2d9", panel: "#6b9dc4", bezel: "#14222e", acc1: "#7de3d0", acc2: "#e0c56a", type: "plain", controls: "toggles", screen: "round", floor: true },
   { id: "h", x: 418, y: 415, w: 100, h: 76, body: "#a98ce8", panel: "#9678d4", bezel: "#241a38", acc1: "#c77dff", acc2: "#f0e6ff", type: "plain", controls: "toggles", screen: "rect" },
@@ -429,7 +430,9 @@ function Tv({
           top: arch ? pad + 14 : pad - 2,
           width: cw,
           height: arch ? scrH - 12 : scrH + 4,
-          background: t.panel,
+          background: t.panelWood
+            ? `repeating-linear-gradient(90deg, rgba(0,0,0,0.14) 0px, rgba(0,0,0,0.14) 2px, transparent 2px, transparent 8px), linear-gradient(180deg, ${sh(t.panel, 1.15)}, ${t.panel})`
+            : t.panel,
           borderRadius: 5,
           border: "1px solid rgba(0,0,0,0.4)",
           boxShadow: "inset 0 1px 0 rgba(255,255,255,0.12)",
