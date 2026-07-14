@@ -216,6 +216,9 @@ function Tv({
   const scrH = t.h - pad * 2;
   const inset = Math.max(4, Math.round(t.h * 0.05));
   const round = t.screen === "round";
+  const egg = t.shape === "egg";
+  const arch = t.shape === "arch";
+  const eggSize = Math.round(Math.min(t.w, t.h) * 0.8);
   const dsz = Math.min(scrW, scrH) + 8;
   const roundScreen = egg ? eggSize - 14 : Math.min(scrW, scrH) - 4;
   const cvSize = round
@@ -232,9 +235,6 @@ function Tv({
     ? `repeating-linear-gradient(92deg, rgba(0,0,0,0.10) 0px, rgba(0,0,0,0.10) 2px, transparent 2px, transparent 9px), linear-gradient(180deg, ${sh(t.body, 1.12)}, ${t.body} 35%, ${sh(t.body, 0.9)})`
     : `linear-gradient(180deg, ${sh(t.body, 1.12)}, ${t.body} 35%, ${sh(t.body, 0.9)})`;
   const showLegs = t.type === "console" || !!pos.legs;
-  const egg = t.shape === "egg";
-  const arch = t.shape === "arch";
-  const eggSize = Math.round(Math.min(t.w, t.h) * 0.8);
 
   return (
     <button
