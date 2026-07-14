@@ -300,13 +300,15 @@ function Tv({
           ))}
         {showLegs &&
           [0.1, 0.84].map((f) => (
-            <polygon
-              key={f}
-              points={`${f * t.w + DX + 4},${t.h - 2} ${f * t.w + DX + 15},${t.h - 2} ${f * t.w + DX + 12},${t.h + 21 - DY} ${f * t.w + DX + 1},${t.h + 21 - DY}`}
-              fill="#33200d"
-              stroke="rgba(255,255,255,0.14)"
-              strokeWidth="0.5"
-            />
+            <g key={f}>
+              <polygon
+                points={`${f * t.w + 9},${t.h - 2} ${f * t.w + 20},${t.h - 2} ${f * t.w + 18},${t.h + 16} ${f * t.w + 7},${t.h + 16}`}
+                fill="#221708"
+                stroke="rgba(255,255,255,0.16)"
+                strokeWidth="0.5"
+              />
+              <rect x={f * t.w + 7} y={t.h + 13} width="11" height="3" rx="1" fill="#d8b36a" />
+            </g>
           ))}
       </svg>
       {!floor && (
@@ -821,9 +823,14 @@ export default function TvPile({ signedIn }: { signedIn: boolean }) {
       setMobile(isMobile);
       if (wrapRef.current) {
         const avail = wrapRef.current.clientWidth;
-        // Desktop: never scale past what fits the viewport height (no page scroll)
+        // Never scale past what fits the viewport height (no page scroll on desktop or mobile)
         const fitH = (window.innerHeight - 110) / STAGE_H;
-        setScale(isMobile ? Math.min(1.7, avail / MOBILE_W) : Math.min(1.25, avail / STAGE_W, fitH));
+        const fitHMobile = (window.innerHeight - 100) / MOBILE_H;
+        setScale(
+          isMobile
+            ? Math.min(1.7, avail / MOBILE_W, fitHMobile)
+            : Math.min(1.25, avail / STAGE_W, fitH)
+        );
       }
       setReady(true);
     };
