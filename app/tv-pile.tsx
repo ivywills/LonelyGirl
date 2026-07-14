@@ -23,6 +23,7 @@ type TvDef = {
   type: "console" | "panel" | "plain" | "portable" | "antenna";
   controls: "dials" | "sliders" | "buttons" | "toggles";
   screen: "rect" | "round";
+  shape?: "egg" | "arch";
   wood?: boolean;
   floor?: boolean;
   /** future: route this TV navigates to once real pages exist */
@@ -34,9 +35,9 @@ const TVS: TvDef[] = [
   { id: "f", x: 36, y: 387, w: 108, h: 84, body: "#5a3350", panel: "#cfc4b4", bezel: "#20121c", acc1: "#e8955c", acc2: "#5a3350", type: "portable", controls: "dials", screen: "rect" },
   { id: "a", x: 190, y: 426, w: 200, h: 152, body: "#5a4330", panel: "#4a3628", bezel: "#1c140d", acc1: "#d8b36a", acc2: "#b9a5f7", type: "console", wood: true, controls: "dials", screen: "rect", floor: true },
   { id: "c", x: 211, y: 311, w: 164, h: 118, body: "#4d3542", panel: "#412c37", bezel: "#1d1218", acc1: "#ef99c2", acc2: "#8fb1ff", type: "plain", controls: "sliders", screen: "rect" },
-  { id: "e", x: 226, y: 208, w: 140, h: 106, body: "#423a5c", panel: "#37304e", bezel: "#191426", acc1: "#b9a5f7", acc2: "#ef99c2", type: "antenna", controls: "dials", screen: "rect" },
+  { id: "e", x: 226, y: 208, w: 140, h: 106, body: "#423a5c", panel: "#37304e", bezel: "#191426", acc1: "#b9a5f7", acc2: "#ef99c2", type: "antenna", controls: "dials", screen: "rect", shape: "arch" },
   { id: "g", x: 396, y: 488, w: 148, h: 112, body: "#375152", panel: "#2c4243", bezel: "#101c1c", acc1: "#7de3d0", acc2: "#e0c56a", type: "plain", controls: "toggles", screen: "round", floor: true },
-  { id: "h", x: 418, y: 415, w: 100, h: 76, body: "#4a4460", panel: "#3d3852", bezel: "#191627", acc1: "#b9a5f7", acc2: "#ef99c2", type: "plain", controls: "toggles", screen: "rect" },
+  { id: "h", x: 418, y: 395, w: 100, h: 96, body: "#4a4460", panel: "#3d3852", bezel: "#191627", acc1: "#b9a5f7", acc2: "#ef99c2", type: "plain", controls: "toggles", screen: "round", shape: "egg" },
   { id: "d", x: 560, y: 510, w: 116, h: 90, body: "#3a4868", panel: "#303c58", bezel: "#141c2e", acc1: "#7de3d0", acc2: "#8fb1ff", type: "plain", controls: "buttons", screen: "rect", floor: true },
 ];
 
@@ -221,11 +222,17 @@ function Tv({
     : { w: scrW - 2 * inset, h: scrH - 2 * inset };
   const cx = pad + scrW + 6;
   const cw = t.w - cx - pad;
-  const screenRadius = round ? "50%" : `${Math.round(scrH * 0.14)}px / ${Math.round(scrH * 0.2)}px`;
+  const screenRadius = round
+    ? "50%"
+    : t.shape === "arch"
+      ? "26px 26px 10px 10px"
+      : `${Math.round(scrH * 0.14)}px / ${Math.round(scrH * 0.2)}px`;
   const bodyBg = t.wood
     ? `repeating-linear-gradient(92deg, rgba(0,0,0,0.10) 0px, rgba(0,0,0,0.10) 2px, transparent 2px, transparent 9px), linear-gradient(180deg, ${sh(t.body, 1.12)}, ${t.body} 35%, ${sh(t.body, 0.9)})`
     : `linear-gradient(180deg, ${sh(t.body, 1.12)}, ${t.body} 35%, ${sh(t.body, 0.9)})`;
   const showLegs = t.type === "console" || !!pos.legs;
+  const egg = t.shape === "egg";
+  const arch = t.shape === "arch";
 
   return (
     <button
@@ -241,8 +248,10 @@ function Tv({
         height: t.h,
         transform: pos.rot ? `rotate(${pos.rot}deg)` : undefined,
         padding: 0,
-        background: bodyBg,
-        borderRadius: 6,
+        background: egg
+          ? `radial-gradient(circle at 32% 26%, ${sh(t.body, 1.35)}, ${t.body} 55%, ${sh(t.body, 0.6)})`
+          : bodyBg,
+        borderRadius: egg ? "50%" : arch ? "42px 42px 6px 6px" : 6,
         border: "1px solid rgba(255,255,255,0.14)",
         boxSizing: "border-box",
         cursor: "pointer",
@@ -256,29 +265,37 @@ function Tv({
         height={t.h}
         style={{ position: "absolute", left: -1, top: -1, overflow: "visible", pointerEvents: "none" }}
       >
-        <polygon
-          points={`4,0 ${t.w - 2},0 ${t.w - 2 + DX},${-DY} ${4 + DX},${-DY}`}
-          fill={sh(t.body, 1.35)}
-          stroke="rgba(0,0,0,0.35)"
-          strokeWidth="0.5"
-        />
-        <polygon
-          points={`${t.w - 1},2 ${t.w - 1 + DX},${2 - DY} ${t.w - 1 + DX},${t.h - 4 - DY} ${t.w - 1},${t.h - 4}`}
-          fill={sh(t.body, 0.55)}
-          stroke="rgba(0,0,0,0.35)"
-          strokeWidth="0.5"
-        />
-        <line x1="4" y1="0.5" x2={t.w - 2} y2="0.5" stroke="rgba(255,255,255,0.2)" strokeWidth="1" />
-        {[0.3, 0.45, 0.6].map((f) => (
-          <rect
-            key={f}
-            x={t.w + 1}
-            y={t.h * f}
-            width={DX - 4}
-            height="2"
-            fill="rgba(0,0,0,0.35)"
+        {!egg && !arch && (
+          <>
+            <polygon
+              points={`4,0 ${t.w - 2},0 ${t.w - 2 + DX},${-DY} ${4 + DX},${-DY}`}
+              fill={sh(t.body, 1.35)}
+              stroke="rgba(0,0,0,0.35)"
+              strokeWidth="0.5"
+            />
+            <line x1="4" y1="0.5" x2={t.w - 2} y2="0.5" stroke="rgba(255,255,255,0.2)" strokeWidth="1" />
+          </>
+        )}
+        {!egg && (
+          <polygon
+            points={`${t.w - 1},${arch ? 38 : 2} ${t.w - 1 + DX},${(arch ? 38 : 2) - DY} ${t.w - 1 + DX},${t.h - 4 - DY} ${t.w - 1},${t.h - 4}`}
+            fill={sh(t.body, 0.55)}
+            stroke="rgba(0,0,0,0.35)"
+            strokeWidth="0.5"
           />
-        ))}
+        )}
+        {!egg &&
+          !arch &&
+          [0.3, 0.45, 0.6].map((f) => (
+            <rect
+              key={f}
+              x={t.w + 1}
+              y={t.h * f}
+              width={DX - 4}
+              height="2"
+              fill="rgba(0,0,0,0.35)"
+            />
+          ))}
         {showLegs &&
           [0.1, 0.84].map((f) => (
             <polygon
@@ -306,12 +323,12 @@ function Tv({
       <div
         style={{
           position: "absolute",
-          left: round ? pad + (scrW - dsz) / 2 + 4 : pad,
-          top: round ? pad + (scrH - dsz) / 2 : pad,
+          left: egg ? (t.w - dsz) / 2 : round ? pad + (scrW - dsz) / 2 + 4 : pad,
+          top: egg ? Math.round(t.h * 0.09) : round ? pad + (scrH - dsz) / 2 : pad,
           width: round ? dsz : scrW,
           height: round ? dsz : scrH,
           background: t.bezel,
-          borderRadius: round ? "50%" : 9,
+          borderRadius: round ? "50%" : arch ? "32px 32px 9px 9px" : 9,
           border: "1px solid rgba(0,0,0,0.7)",
           boxShadow:
             "inset 0 0 0 1.5px rgba(255,255,255,0.07), inset 0 2px 4px rgba(0,0,0,0.7), inset 0 -1px 2px rgba(255,255,255,0.06)",
@@ -361,13 +378,44 @@ function Tv({
           />
         </div>
       </div>
+      {egg && (
+        <>
+          <div
+            style={{
+              position: "absolute",
+              bottom: Math.round(t.h * 0.04),
+              left: "50%",
+              transform: "translateX(-50%)",
+              display: "flex",
+              gap: 10,
+              alignItems: "flex-start",
+            }}
+          >
+            <Dial size={13} color={t.acc1} angle={28} />
+            <Dial size={13} color={t.acc2} angle={-40} />
+          </div>
+          <div
+            style={{
+              position: "absolute",
+              top: "100%",
+              left: "32%",
+              right: "32%",
+              height: 13,
+              background: sh(t.body, 0.55),
+              clipPath: "polygon(10% 0, 90% 0, 100% 100%, 0 100%)",
+              borderRadius: 2,
+            }}
+          />
+        </>
+      )}
+      {!egg && (
       <div
         style={{
           position: "absolute",
           left: cx,
-          top: pad - 2,
+          top: arch ? pad + 14 : pad - 2,
           width: cw,
-          height: scrH + 4,
+          height: arch ? scrH - 12 : scrH + 4,
           background: t.panel,
           borderRadius: 5,
           border: "1px solid rgba(0,0,0,0.4)",
@@ -420,26 +468,35 @@ function Tv({
           }}
         />
       </div>
-      <div style={{ position: "absolute", top: 3, left: pad, display: "flex", gap: 4 }}>
-        {[...Array(6)].map((_, i) => (
-          <div
-            key={i}
-            style={{
-              width: 2,
-              height: 5,
-              background: "rgba(0,0,0,0.5)",
-              borderRight: "1px solid rgba(255,255,255,0.14)",
-            }}
-          />
-        ))}
-      </div>
-      {(
-        [
-          [4, 4],
-          [t.w - 9, 4],
-          [4, t.h - 9],
-          [t.w - 9, t.h - 9],
-        ] as const
+      )}
+      {!egg && !arch && (
+        <div style={{ position: "absolute", top: 3, left: pad, display: "flex", gap: 4 }}>
+          {[...Array(6)].map((_, i) => (
+            <div
+              key={i}
+              style={{
+                width: 2,
+                height: 5,
+                background: "rgba(0,0,0,0.5)",
+                borderRight: "1px solid rgba(255,255,255,0.14)",
+              }}
+            />
+          ))}
+        </div>
+      )}
+      {(egg
+        ? []
+        : arch
+          ? ([
+              [4, t.h - 9],
+              [t.w - 9, t.h - 9],
+            ] as const)
+          : ([
+              [4, 4],
+              [t.w - 9, 4],
+              [4, t.h - 9],
+              [t.w - 9, t.h - 9],
+            ] as const)
       ).map((p, i) => (
         <div
           key={i}
@@ -605,34 +662,18 @@ function Tv({
         </>
       )}
       {t.id === "h" && (
-        <>
-          {["16%", "74%"].map((l) => (
-            <div
-              key={l}
-              style={{
-                position: "absolute",
-                top: "100%",
-                left: l,
-                width: 10,
-                height: 3,
-                background: "#0d0b10",
-                borderRadius: "0 0 2px 2px",
-              }}
-            />
-          ))}
-          <div
-            style={{
-              position: "absolute",
-              left: pad + 1,
-              bottom: 3,
-              width: 4,
-              height: 4,
-              borderRadius: "50%",
-              background: "#e24b4a",
-              boxShadow: "0 0 3px #e24b4a",
-            }}
-          />
-        </>
+        <div
+          style={{
+            position: "absolute",
+            left: "22%",
+            bottom: "16%",
+            width: 4,
+            height: 4,
+            borderRadius: "50%",
+            background: "#e24b4a",
+            boxShadow: "0 0 3px #e24b4a",
+          }}
+        />
       )}
       {showLegs &&
         ["10%", "84%"].map((l) => (
