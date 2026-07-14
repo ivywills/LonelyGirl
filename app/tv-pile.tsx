@@ -34,9 +34,9 @@ const TVS: TvDef[] = [
   { id: "b", x: 10, y: 468, w: 172, h: 132, body: "#79aad4", panel: "#6795bd", bezel: "#16222e", acc1: "#ffe08a", acc2: "#eaf3fb", type: "panel", controls: "sliders", screen: "rect", floor: true },
   { id: "f", x: 36, y: 387, w: 108, h: 84, body: "#7a4b6e", panel: "#cfc4b4", bezel: "#20121c", acc1: "#e8955c", acc2: "#7a4b6e", type: "portable", controls: "dials", screen: "rect" },
   { id: "a", x: 190, y: 426, w: 200, h: 152, body: "#7a5e42", panel: "#664d38", bezel: "#1c140d", acc1: "#d8b36a", acc2: "#b9a5f7", type: "console", wood: true, controls: "dials", screen: "rect", floor: true },
-  { id: "c", x: 211, y: 311, w: 164, h: 118, body: "#6b4d5f", panel: "#5b414e", bezel: "#1d1218", acc1: "#ef99c2", acc2: "#8fb1ff", type: "plain", controls: "sliders", screen: "rect" },
+  { id: "c", x: 211, y: 311, w: 164, h: 118, body: "#8a6a49", panel: "#76573b", bezel: "#1d1410", acc1: "#ef99c2", acc2: "#8fb1ff", type: "plain", controls: "sliders", screen: "rect", wood: true },
   { id: "e", x: 226, y: 208, w: 140, h: 106, body: "#5c5480", panel: "#4f476c", bezel: "#191426", acc1: "#b9a5f7", acc2: "#ef99c2", type: "antenna", controls: "dials", screen: "rect", shape: "arch" },
-  { id: "g", x: 396, y: 488, w: 148, h: 112, body: "#4f7371", panel: "#416060", bezel: "#101c1c", acc1: "#7de3d0", acc2: "#e0c56a", type: "plain", controls: "toggles", screen: "round", floor: true },
+  { id: "g", x: 396, y: 488, w: 148, h: 112, body: "#7fb2d9", panel: "#6b9dc4", bezel: "#14222e", acc1: "#7de3d0", acc2: "#e0c56a", type: "plain", controls: "toggles", screen: "round", floor: true },
   { id: "h", x: 418, y: 415, w: 100, h: 76, body: "#a98ce8", panel: "#9678d4", bezel: "#241a38", acc1: "#c77dff", acc2: "#f0e6ff", type: "plain", controls: "toggles", screen: "rect" },
   { id: "d", x: 560, y: 510, w: 116, h: 90, body: "#4d608c", panel: "#415178", bezel: "#141c2e", acc1: "#8fb1ff", acc2: "#e0c56a", type: "plain", controls: "buttons", screen: "rect", floor: true },
 ];
@@ -783,7 +783,6 @@ function Tv({
         >
           <line x1="50" y1="50" x2="14" y2="4" stroke="#8a8498" strokeWidth="2.5" strokeLinecap="round" />
           <line x1="50" y1="50" x2="86" y2="2" stroke="#8a8498" strokeWidth="2.5" strokeLinecap="round" />
-          <circle cx="50" cy="22" r="9" fill="none" stroke="#8a8498" strokeWidth="2" />
           <circle cx="14" cy="4" r="3" fill="#b9a5f7" />
           <circle cx="86" cy="2" r="3" fill="#ef99c2" />
           <rect x="40" y="42" width="20" height="10" rx="3" fill="#8a8498" stroke="rgba(0,0,0,0.4)" />
