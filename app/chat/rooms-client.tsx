@@ -1,0 +1,314 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
+
+export type Room = {
+  id: string;
+  creator_id: string;
+  name: string;
+  description: string;
+  bg_color: string;
+  image_url: string;
+  tags: string[];
+  is_private: boolean;
+  rules: string;
+  welcome_message: string;
+};
+
+type JoinRequest = {
+  id: string;
+  room_id: string;
+  note: string;
+  status: string;
+  chat_rooms: { name: string } | null;
+};
+
+export const ROOM_COLORS = [
+  "#17171e",
+  "#241f33",
+  "#2b2342",
+  "#3b2a4f",
+  "#16203a",
+  "#1d3a5f",
+  "#173a37",
+  "#3f1c31",
+  "#4a1d24",
+  "#332417",
+  "#1e3320",
+  "#2e2e38",
+];
+
+export default function ChatDirectory({
+  rooms,
+  memberRoomIds,
+  myRequests,
+  userId,
+  displayName,
+}: {
+  rooms: Room[];
+  memberRoomIds: string[];
+  myRequests: JoinRequest[];
+  userId: string;
+  displayName: string;
+}) {
+  const router = useRouter();
+  const [query, setQuery] = useState("");
+  const [activeTag, setActiveTag] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [tags, setTags] = useState("");
+  const [imageUrl, setImageUrl] = useState("");
+  const [bgColor, setBgColor] = useState(ROOM_COLORS[1]);
+  const [isPrivate, setIsPrivate] = useState(false);
+  const [welcome, setWelcome] = useState("");
+  const [rules, setRules] = useState("");
+
+  const allTags = useMemo(() => {
+    const s = new Set<string>();
+    rooms.forEach((r) => r.tags?.forEach((t) => s.add(t)));
+    return [...s].sort();
+  }, [rooms]);
+
+  const visible = rooms.filter((r) => {
+    const q = query.trim().toLowerCase();
+    const matchesQuery =
+      !q ||
+      r.name.toLowerCase().includes(q) ||
+      r.tags?.some((t) => t.toLowerCase().includes(q));
+    const matchesTag = !activeTag || r.tags?.includes(activeTag);
+    return matchesQuery && matchesTag;
+  });
+
+  async function createRoom(e: React.FormEvent) {
+    e.preventDefault();
+    if (!name.trim()) return;
+    setBusy(true);
+    setError("");
+    const supabase = createClient();
+    const tagList = tags
+      .split(",")
+      .map((t) => t.trim().toLowerCase())
+      .filter(Boolean)
+      .slice(0, 8);
+    const { data, error: err } = await supabase
+      .from("chat_rooms")
+      .insert({
+        creator_id: userId,
+        name: name.trim(),
+        description: description.trim(),
+        tags: tagList,
+        image_url: imageUrl.trim(),
+        bg_color: bgColor,
+        is_private: isPrivate,
+        welcome_message: welcome.trim(),
+        rules: rules.trim(),
+      })
+      .select()
+      .single();
+    if (err || !data) {
+      setError(err?.message ?? "Could not create the room.");
+      setBusy(false);
+      return;
+    }
+    await supabase.from("room_members").insert({
+      room_id: data.id,
+      user_id: userId,
+      display_name: displayName,
+    });
+    router.push(`/chat/${data.id}`);
+  }
+
+  const pending = myRequests.filter((r) => r.status === "pending");
+
+  return (
+    <main style={{ maxWidth: 860, margin: "0 auto", padding: "32px 20px 60px" }}>
+      <header style={{ display: "flex", alignItems: "baseline", gap: 14, marginBottom: 6 }}>
+        <h1 style={{ fontSize: 26 }}>Chatrooms</h1>
+        <Link href="/" style={{ fontSize: 13 }}>
+          back to the pile
+        </Link>
+        <button
+          className="primary"
+          style={{ width: "auto", marginLeft: "auto", padding: "8px 18px" }}
+          onClick={() => setCreating((v) => !v)}
+        >
+          {creating ? "Close" : "Create a room"}
+        </button>
+      </header>
+      <p style={{ color: "var(--muted)", fontSize: 14, marginBottom: 18 }}>
+        Find your people, or start a room of your own.
+      </p>
+
+      {creating && (
+        <form
+          onSubmit={createRoom}
+          className="card"
+          style={{ maxWidth: "none", marginBottom: 24, background: bgColor, transition: "background .3s" }}
+        >
+          <h2 style={{ fontSize: 18, marginBottom: 12 }}>New room</h2>
+          {error && <p className="msg-error">{error}</p>}
+          <label>Name</label>
+          <input value={name} onChange={(e) => setName(e.target.value)} maxLength={60} required />
+          <label>Description</label>
+          <input
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            maxLength={200}
+            placeholder="What is this room about?"
+          />
+          <label>Tags (comma separated — sports, gaming, a show...)</label>
+          <input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="anime, cozy, late-night" />
+          <label>Room image URL — rooms with a picture get way more visitors</label>
+          <input value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="https://..." />
+          <label>Background colour</label>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
+            {ROOM_COLORS.map((c) => (
+              <button
+                key={c}
+                type="button"
+                onClick={() => setBgColor(c)}
+                aria-label={`Colour ${c}`}
+                style={{
+                  width: 28,
+                  height: 28,
+                  padding: 0,
+                  borderRadius: 8,
+                  background: c,
+                  border: c === bgColor ? "2px solid var(--accent)" : "1px solid var(--border)",
+                }}
+              />
+            ))}
+          </div>
+          <label>Welcome message (sent to people when they join)</label>
+          <input value={welcome} onChange={(e) => setWelcome(e.target.value)} maxLength={200} />
+          <label>Room rules (optional)</label>
+          <input value={rules} onChange={(e) => setRules(e.target.value)} maxLength={500} />
+          <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
+            <input
+              type="checkbox"
+              checked={isPrivate}
+              onChange={(e) => setIsPrivate(e.target.checked)}
+              style={{ width: "auto", margin: 0 }}
+            />
+            Private — people must request to join
+          </label>
+          <button className="primary" disabled={busy} type="submit">
+            {busy ? "Creating…" : "Create room"}
+          </button>
+        </form>
+      )}
+
+      {pending.length > 0 && (
+        <section className="card" style={{ maxWidth: "none", marginBottom: 24 }}>
+          <h2 style={{ fontSize: 16, marginBottom: 10 }}>Waiting on</h2>
+          {pending.map((r) => (
+            <p key={r.id} style={{ fontSize: 14, color: "var(--muted)", margin: "6px 0" }}>
+              <strong style={{ color: "var(--text)" }}>{r.chat_rooms?.name ?? "a room"}</strong>
+              {r.note ? ` — your note: “${r.note}”` : ""}
+            </p>
+          ))}
+        </section>
+      )}
+
+      <input
+        placeholder="Search rooms by title or tag..."
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        style={{ marginBottom: 10 }}
+      />
+      {allTags.length > 0 && (
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 20 }}>
+          {allTags.map((t) => (
+            <button
+              key={t}
+              onClick={() => setActiveTag(activeTag === t ? null : t)}
+              style={{
+                width: "auto",
+                padding: "4px 12px",
+                fontSize: 13,
+                borderRadius: 999,
+                background: activeTag === t ? "var(--accent)" : "var(--card)",
+                color: activeTag === t ? "#131316" : "var(--muted)",
+                border: "1px solid var(--border)",
+              }}
+            >
+              #{t}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 14 }}>
+        {visible.map((r) => (
+          <Link
+            key={r.id}
+            href={`/chat/${r.id}`}
+            style={{
+              textDecoration: "none",
+              color: "var(--text)",
+              background: r.bg_color,
+              border: "1px solid var(--border)",
+              borderRadius: 14,
+              overflow: "hidden",
+              display: "block",
+            }}
+          >
+            {r.image_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={r.image_url}
+                alt=""
+                style={{ width: "100%", height: 110, objectFit: "cover", display: "block" }}
+              />
+            ) : (
+              <div
+                style={{
+                  height: 44,
+                  background: "rgba(255,255,255,0.05)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "var(--muted)",
+                  fontSize: 12,
+                }}
+              >
+                no picture yet
+              </div>
+            )}
+            <div style={{ padding: "12px 14px 14px" }}>
+              <p style={{ fontWeight: 600, fontSize: 15 }}>
+                {r.name}
+                {r.is_private && (
+                  <span style={{ fontSize: 11, color: "var(--muted)", marginLeft: 8 }}>PRIVATE</span>
+                )}
+                {memberRoomIds.includes(r.id) && (
+                  <span style={{ fontSize: 11, color: "var(--success)", marginLeft: 8 }}>JOINED</span>
+                )}
+              </p>
+              {r.description && (
+                <p style={{ fontSize: 13, color: "var(--muted)", margin: "4px 0 0" }}>{r.description}</p>
+              )}
+              {r.tags?.length > 0 && (
+                <p style={{ fontSize: 12, color: "var(--accent)", margin: "8px 0 0" }}>
+                  {r.tags.map((t) => `#${t}`).join(" ")}
+                </p>
+              )}
+            </div>
+          </Link>
+        ))}
+        {visible.length === 0 && (
+          <p style={{ color: "var(--muted)", fontSize: 14 }}>
+            No rooms match — start the first one.
+          </p>
+        )}
+      </div>
+    </main>
+  );
+}

@@ -31,8 +31,12 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // Protect /account: redirect signed-out users to /login
-  if (!user && request.nextUrl.pathname.startsWith("/account")) {
+  // Protect signed-in areas: redirect signed-out users to /login
+  if (
+    !user &&
+    (request.nextUrl.pathname.startsWith("/account") ||
+      request.nextUrl.pathname.startsWith("/chat"))
+  ) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);
