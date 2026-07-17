@@ -38,19 +38,86 @@ export async function uploadRoomImage(
 }
 
 export const ROOM_COLORS = [
-  "#34343f",
-  "#453d5c",
-  "#4d4070",
-  "#5d4579",
-  "#34456b",
-  "#3a608f",
-  "#356e68",
-  "#6d3a58",
-  "#773842",
-  "#5e4830",
-  "#3d5c40",
-  "#52525f",
+  "#7c3aed",
+  "#9333ea",
+  "#4f46e5",
+  "#2563eb",
+  "#0891b2",
+  "#0d9488",
+  "#16a34a",
+  "#ca8a04",
+  "#ea580c",
+  "#dc2626",
+  "#e11d48",
+  "#db2777",
 ];
+
+export function ImagePicker({
+  id,
+  imageUrl,
+  uploading,
+  onFile,
+}: {
+  id: string;
+  imageUrl: string;
+  uploading: boolean;
+  onFile: (file: File) => void;
+}) {
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <input
+        id={id}
+        type="file"
+        accept="image/*"
+        disabled={uploading}
+        style={{ display: "none" }}
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) onFile(file);
+          e.target.value = "";
+        }}
+      />
+      <label
+        htmlFor={id}
+        style={{
+          display: "block",
+          border: "2px dashed rgba(255,255,255,0.35)",
+          borderRadius: 12,
+          padding: imageUrl ? 8 : "20px 16px",
+          textAlign: "center",
+          cursor: uploading ? "wait" : "pointer",
+          background: "rgba(0,0,0,0.15)",
+        }}
+      >
+        {imageUrl ? (
+          <>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={imageUrl}
+              alt="Room picture"
+              style={{ width: "100%", height: 130, objectFit: "cover", borderRadius: 8, display: "block" }}
+            />
+            <span style={{ fontSize: 12, display: "block", marginTop: 6 }}>
+              {uploading ? "Uploading…" : "Looking good — tap to change it"}
+            </span>
+          </>
+        ) : (
+          <>
+            <span style={{ fontSize: 26, display: "block", marginBottom: 4 }} aria-hidden>
+              📷
+            </span>
+            <span style={{ fontSize: 14, fontWeight: 600, display: "block" }}>
+              {uploading ? "Uploading…" : "Add a room photo"}
+            </span>
+            <span style={{ fontSize: 12, display: "block", marginTop: 3, opacity: 0.75 }}>
+              Rooms with a picture get way more visitors — tap to choose one
+            </span>
+          </>
+        )}
+      </label>
+    </div>
+  );
+}
 
 export function isLight(hex: string): boolean {
   try {
@@ -196,14 +263,12 @@ export default function ChatDirectory({
           />
           <label>Tags (comma separated — sports, gaming, a show...)</label>
           <input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="anime, cozy, late-night" />
-          <label>Room picture — rooms with one get way more visitors</label>
-          <input
-            type="file"
-            accept="image/*"
-            disabled={uploading}
-            onChange={async (e) => {
-              const file = e.target.files?.[0];
-              if (!file) return;
+          <label>Room picture</label>
+          <ImagePicker
+            id="create-room-image"
+            imageUrl={imageUrl}
+            uploading={uploading}
+            onFile={async (file) => {
               setUploading(true);
               setError("");
               try {
@@ -213,17 +278,7 @@ export default function ChatDirectory({
               }
               setUploading(false);
             }}
-            style={{ padding: 8 }}
           />
-          {uploading && <p style={{ fontSize: 13, marginBottom: 12 }}>Uploading…</p>}
-          {imageUrl && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={imageUrl}
-              alt="Room picture preview"
-              style={{ height: 80, borderRadius: 10, marginBottom: 14, display: "block" }}
-            />
-          )}
           <label>Background colour</label>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
             {ROOM_COLORS.map((c) => (

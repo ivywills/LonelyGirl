@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { ROOM_COLORS, isLight, uploadRoomImage, type Room } from "@/app/chat/rooms-client";
+import { ImagePicker, ROOM_COLORS, isLight, uploadRoomImage, type Room } from "@/app/chat/rooms-client";
 
 type Msg = {
   id: number;
@@ -321,13 +321,11 @@ export default function RoomClient({
             }
           />
           <label>Room picture</label>
-          <input
-            type="file"
-            accept="image/*"
-            disabled={uploading}
-            onChange={async (e) => {
-              const file = e.target.files?.[0];
-              if (!file) return;
+          <ImagePicker
+            id="settings-room-image"
+            imageUrl={room.image_url}
+            uploading={uploading}
+            onFile={async (file) => {
               setUploading(true);
               setError("");
               try {
@@ -340,17 +338,7 @@ export default function RoomClient({
               }
               setUploading(false);
             }}
-            style={{ padding: 8 }}
           />
-          {uploading && <p style={{ fontSize: 13, marginBottom: 12 }}>Uploading…</p>}
-          {room.image_url && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={room.image_url}
-              alt="Room picture preview"
-              style={{ height: 70, borderRadius: 10, marginBottom: 14, display: "block" }}
-            />
-          )}
           <label>Background colour</label>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
             {ROOM_COLORS.map((c) => (
