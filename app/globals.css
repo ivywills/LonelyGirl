@@ -60,7 +60,8 @@ label {
   margin-bottom: 6px;
 }
 
-input {
+input,
+textarea {
   width: 100%;
   padding: 10px 12px;
   border-radius: 8px;
@@ -69,11 +70,38 @@ input {
   color: var(--text);
   font-size: 15px;
   margin-bottom: 16px;
+  font-family: inherit;
 }
 
-input:focus {
+textarea {
+  resize: vertical;
+}
+
+input:focus,
+textarea:focus {
   outline: none;
   border-color: var(--accent);
+}
+
+.on-theme label,
+.on-theme p {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.on-theme h2 {
+  color: #fff;
+}
+
+.on-theme input,
+.on-theme textarea {
+  background: rgba(0, 0, 0, 0.4);
+  border-color: rgba(255, 255, 255, 0.22);
+  color: #f4f3f8;
+}
+
+.on-theme input::placeholder,
+.on-theme textarea::placeholder {
+  color: rgba(255, 255, 255, 0.45);
 }
 
 button {

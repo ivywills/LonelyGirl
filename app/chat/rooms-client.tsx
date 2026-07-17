@@ -26,6 +26,17 @@ type JoinRequest = {
   chat_rooms: { name: string } | null;
 };
 
+export async function uploadRoomImage(
+  supabase: ReturnType<typeof createClient>,
+  userId: string,
+  file: File
+): Promise<string> {
+  const path = `${userId}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9_.-]/g, "_")}`;
+  const { error } = await supabase.storage.from("room-images").upload(path, file);
+  if (error) throw new Error(error.message);
+  return supabase.storage.from("room-images").getPublicUrl(path).data.publicUrl;
+}
+
 export const ROOM_COLORS = [
   "#17171e",
   "#241f33",
@@ -59,6 +70,7 @@ export default function ChatDirectory({
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
 
   const [name, setName] = useState("");
@@ -149,7 +161,7 @@ export default function ChatDirectory({
       {creating && (
         <form
           onSubmit={createRoom}
-          className="card"
+          className="card on-theme"
           style={{ maxWidth: "none", marginBottom: 24, background: bgColor, transition: "background .3s" }}
         >
           <h2 style={{ fontSize: 18, marginBottom: 12 }}>New room</h2>
@@ -157,16 +169,43 @@ export default function ChatDirectory({
           <label>Name</label>
           <input value={name} onChange={(e) => setName(e.target.value)} maxLength={60} required />
           <label>Description</label>
-          <input
+          <textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            maxLength={200}
+            maxLength={300}
+            rows={3}
             placeholder="What is this room about?"
           />
           <label>Tags (comma separated — sports, gaming, a show...)</label>
           <input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="anime, cozy, late-night" />
-          <label>Room image URL — rooms with a picture get way more visitors</label>
-          <input value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="https://..." />
+          <label>Room picture — rooms with one get way more visitors</label>
+          <input
+            type="file"
+            accept="image/*"
+            disabled={uploading}
+            onChange={async (e) => {
+              const file = e.target.files?.[0];
+              if (!file) return;
+              setUploading(true);
+              setError("");
+              try {
+                setImageUrl(await uploadRoomImage(createClient(), userId, file));
+              } catch (err) {
+                setError(err instanceof Error ? err.message : "Upload failed.");
+              }
+              setUploading(false);
+            }}
+            style={{ padding: 8 }}
+          />
+          {uploading && <p style={{ fontSize: 13, marginBottom: 12 }}>Uploading…</p>}
+          {imageUrl && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={imageUrl}
+              alt="Room picture preview"
+              style={{ height: 80, borderRadius: 10, marginBottom: 14, display: "block" }}
+            />
+          )}
           <label>Background colour</label>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
             {ROOM_COLORS.map((c) => (

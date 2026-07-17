@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { ROOM_COLORS, type Room } from "@/app/chat/rooms-client";
+import { ROOM_COLORS, uploadRoomImage, type Room } from "@/app/chat/rooms-client";
 
 type Msg = {
   id: number;
@@ -60,6 +60,7 @@ export default function RoomClient({
   const [showSettings, setShowSettings] = useState(false);
   const [requests, setRequests] = useState<JoinRequest[]>([]);
   const [welcomeBanner, setWelcomeBanner] = useState("");
+  const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
   const isCreator = room.creator_id === userId;
@@ -285,10 +286,11 @@ export default function RoomClient({
           <label>Name</label>
           <input value={room.name} onChange={(e) => setRoom({ ...room, name: e.target.value })} maxLength={60} />
           <label>Description</label>
-          <input
+          <textarea
             value={room.description}
             onChange={(e) => setRoom({ ...room, description: e.target.value })}
-            maxLength={200}
+            maxLength={300}
+            rows={3}
           />
           <label>Tags (comma separated)</label>
           <input
@@ -300,8 +302,34 @@ export default function RoomClient({
               })
             }
           />
-          <label>Image URL</label>
-          <input value={room.image_url} onChange={(e) => setRoom({ ...room, image_url: e.target.value })} />
+          <label>Room picture</label>
+          <input
+            type="file"
+            accept="image/*"
+            disabled={uploading}
+            onChange={async (e) => {
+              const file = e.target.files?.[0];
+              if (!file) return;
+              setUploading(true);
+              setError("");
+              try {
+                setRoom({ ...room, image_url: await uploadRoomImage(supabase, userId, file) });
+              } catch (err) {
+                setError(err instanceof Error ? err.message : "Upload failed.");
+              }
+              setUploading(false);
+            }}
+            style={{ padding: 8 }}
+          />
+          {uploading && <p style={{ fontSize: 13, marginBottom: 12 }}>Uploading…</p>}
+          {room.image_url && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={room.image_url}
+              alt="Room picture preview"
+              style={{ height: 70, borderRadius: 10, marginBottom: 14, display: "block" }}
+            />
+          )}
           <label>Background colour</label>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
             {ROOM_COLORS.map((c) => (
@@ -471,17 +499,24 @@ export default function RoomClient({
                   {isCreator && (
                     <button
                       onClick={() => togglePin(m)}
+                      aria-label={m.pinned ? "Unpin message" : "Pin message"}
+                      title={m.pinned ? "Unpin" : "Pin"}
                       style={{
-                        width: "auto",
-                        padding: "1px 8px",
-                        fontSize: 10,
+                        width: 22,
+                        height: 22,
+                        padding: 0,
+                        fontSize: 12,
+                        lineHeight: "20px",
                         position: "absolute",
-                        top: -10,
-                        right: 6,
-                        borderRadius: 6,
+                        bottom: -10,
+                        left: 6,
+                        borderRadius: "50%",
+                        background: m.pinned ? "var(--accent)" : "var(--card)",
+                        border: "1px solid var(--border)",
+                        opacity: m.pinned ? 1 : 0.65,
                       }}
                     >
-                      {m.pinned ? "unpin" : "pin"}
+                      📌
                     </button>
                   )}
                 </div>
