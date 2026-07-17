@@ -54,7 +54,7 @@ export async function logInWithEmail(formData: FormData) {
   }
 
   revalidatePath("/", "layout");
-  redirect("/account");
+  redirect("/");
 }
 
 export async function signOut() {
