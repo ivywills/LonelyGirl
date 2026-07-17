@@ -62,7 +62,12 @@ export default function RoomClient({
   const [welcomeBanner, setWelcomeBanner] = useState("");
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
+  const [hasMore, setHasMore] = useState(initialMessages.length >= 50);
+  const [pinnedList, setPinnedList] = useState<Msg[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const stickRef = useRef(true);
+  const lastSendRef = useRef(0);
   const isCreator = room.creator_id === userId;
   const light = isLight(room.bg_color);
   const ink = light ? "#262130" : "var(--text)";
@@ -70,8 +75,24 @@ export default function RoomClient({
   const acc = light ? "#6d4fc4" : "var(--accent)";
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    // Only auto-scroll when the reader is already near the bottom
+    if (stickRef.current) bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length]);
+
+  useEffect(() => {
+    if (!member) return;
+    supabase
+      .from("messages")
+      .select("*")
+      .eq("room_id", room.id)
+      .eq("pinned", true)
+      .order("created_at", { ascending: true })
+      .limit(20)
+      .then(({ data }) => {
+        if (data) setPinnedList(data);
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [member, room.id]);
 
   useEffect(() => {
     if (!member) return;
@@ -81,9 +102,12 @@ export default function RoomClient({
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "messages", filter: `room_id=eq.${room.id}` },
         (payload: { new: Msg }) => {
-          setMessages((prev) =>
-            prev.some((m) => m.id === payload.new.id) ? prev : [...prev, payload.new]
-          );
+          setMessages((prev) => {
+            if (prev.some((m) => m.id === payload.new.id)) return prev;
+            const next = [...prev, payload.new];
+            // Keep memory bounded in very busy rooms
+            return next.length > 400 ? next.slice(-400) : next;
+          });
         }
       )
       .on(
@@ -91,6 +115,15 @@ export default function RoomClient({
         { event: "UPDATE", schema: "public", table: "messages", filter: `room_id=eq.${room.id}` },
         (payload: { new: Msg }) => {
           setMessages((prev) => prev.map((m) => (m.id === payload.new.id ? payload.new : m)));
+          setPinnedList((prev) => {
+            if (payload.new.pinned) {
+              const merged = prev.some((m) => m.id === payload.new.id)
+                ? prev.map((m) => (m.id === payload.new.id ? payload.new : m))
+                : [...prev, payload.new];
+              return merged.sort((a, b) => a.created_at.localeCompare(b.created_at)).slice(-20);
+            }
+            return prev.filter((m) => m.id !== payload.new.id);
+          });
         }
       )
       .subscribe();
@@ -141,14 +174,17 @@ export default function RoomClient({
     }
     setMember(true);
     if (room.welcome_message) setWelcomeBanner(room.welcome_message);
-    // Load the room's full history now that membership grants read access
+    // Load recent history now that membership grants read access
     const { data: history } = await supabase
       .from("messages")
       .select("*")
       .eq("room_id", room.id)
-      .order("created_at", { ascending: true })
-      .limit(200);
-    if (history) setMessages(history);
+      .order("created_at", { ascending: false })
+      .limit(50);
+    if (history) {
+      setMessages(history.slice().reverse());
+      setHasMore(history.length >= 50);
+    }
     const { data: joinedMsg } = await supabase
       .from("messages")
       .insert({
@@ -198,10 +234,33 @@ export default function RoomClient({
     setRequests((prev) => prev.filter((r) => r.id !== req.id));
   }
 
+  async function loadEarlier() {
+    if (!messages.length) return;
+    const oldest = messages[0].created_at;
+    const { data } = await supabase
+      .from("messages")
+      .select("*")
+      .eq("room_id", room.id)
+      .lt("created_at", oldest)
+      .order("created_at", { ascending: false })
+      .limit(50);
+    if (!data) return;
+    const el = listRef.current;
+    const prevHeight = el?.scrollHeight ?? 0;
+    setMessages((prev) => [...data.slice().reverse(), ...prev]);
+    setHasMore(data.length >= 50);
+    requestAnimationFrame(() => {
+      if (el) el.scrollTop = el.scrollHeight - prevHeight;
+    });
+  }
+
   async function send(e: React.FormEvent) {
     e.preventDefault();
     const content = input.trim();
     if (!content) return;
+    const now = Date.now();
+    if (now - lastSendRef.current < 600) return;
+    lastSendRef.current = now;
     setInput("");
     setShowEmoji(false);
     const { error: err } = await supabase.from("messages").insert({
@@ -237,7 +296,7 @@ export default function RoomClient({
     else setShowSettings(false);
   }
 
-  const pinned = messages.filter((m) => m.pinned);
+  const pinned = pinnedList;
 
   return (
     <main
@@ -483,6 +542,11 @@ export default function RoomClient({
             </div>
           )}
           <div
+            ref={listRef}
+            onScroll={() => {
+              const el = listRef.current;
+              if (el) stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 160;
+            }}
             style={{
               flex: 1,
               overflowY: "auto",
@@ -493,6 +557,14 @@ export default function RoomClient({
               minHeight: 300,
             }}
           >
+            {hasMore && (
+              <button
+                onClick={loadEarlier}
+                style={{ width: "auto", alignSelf: "center", padding: "4px 16px", fontSize: 12 }}
+              >
+                Load earlier messages
+              </button>
+            )}
             {messages.map((m) =>
               m.kind === "system" ? (
                 <p key={m.id} style={{ textAlign: "center", fontSize: 12, color: sub }}>
@@ -529,8 +601,8 @@ export default function RoomClient({
                         height: 22,
                         padding: 0,
                         position: "absolute",
-                        bottom: -10,
-                        left: 6,
+                        bottom: -14,
+                        left: -8,
                         borderRadius: "50%",
                         background: "rgba(255,255,255,0.95)",
                         border: "1px solid rgba(0,0,0,0.25)",

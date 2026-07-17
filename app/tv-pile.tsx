@@ -204,12 +204,14 @@ function Tv({
   pos,
   floor,
   onClick,
+  onAlt,
   canvasRef,
 }: {
   t: TvDef;
   pos: { x: number; y: number; rot?: number; legs?: boolean };
   floor: boolean;
   onClick: () => void;
+  onAlt?: () => void;
   canvasRef: (el: HTMLCanvasElement | null) => void;
 }) {
   const pad = Math.round(t.h * 0.085);
@@ -238,9 +240,17 @@ function Tv({
   const showLegs = t.type === "console" || !!pos.legs;
 
   return (
-    <button
+    <div
+      role="button"
+      tabIndex={0}
       aria-label="Old television — sign up or log in"
       onClick={onClick}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onClick();
+        }
+      }}
       className="tv-btn"
       style={{
         ["--glow" as string]: `${t.acc1}88`,
@@ -791,7 +801,29 @@ function Tv({
           <rect x="40" y="42" width="20" height="10" rx="3" fill="#8a8498" stroke="rgba(0,0,0,0.4)" />
         </svg>
       )}
-    </button>
+      {onAlt && (
+        <button
+          aria-label="Your account"
+          title="Account"
+          onClick={(e) => {
+            e.stopPropagation();
+            onAlt();
+          }}
+          style={{
+            position: "absolute",
+            left: cx,
+            top: pad - 2,
+            width: cw,
+            height: scrH + 4,
+            padding: 0,
+            background: "transparent",
+            border: "none",
+            cursor: "pointer",
+            zIndex: 3,
+          }}
+        />
+      )}
+    </div>
   );
 }
 
@@ -981,6 +1013,11 @@ export default function TvPile({ signedIn }: { signedIn: boolean }) {
               pos={mobile ? MOBILE_POS[t.id] : { x: t.x, y: t.y }}
               floor={mobile ? t.id === "a" || !!MOBILE_POS[t.id]?.legs : !!t.floor}
               onClick={() => handleClick(t)}
+              onAlt={
+                t.id === "e"
+                  ? () => router.push(signedIn ? "/account" : "/signup")
+                  : undefined
+              }
               canvasRef={(el) => {
                 canvases.current[i] = el;
               }}

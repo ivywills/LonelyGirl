@@ -22,7 +22,7 @@ export default async function RoomPage({
   const [{ data: membership }, { data: myRequest }, { data: messages }] = await Promise.all([
     supabase.from("room_members").select("user_id").eq("room_id", id).eq("user_id", user.id).maybeSingle(),
     supabase.from("join_requests").select("*").eq("room_id", id).eq("user_id", user.id).maybeSingle(),
-    supabase.from("messages").select("*").eq("room_id", id).order("created_at", { ascending: true }).limit(200),
+    supabase.from("messages").select("*").eq("room_id", id).order("created_at", { ascending: false }).limit(50),
   ]);
 
   const displayName =
@@ -38,7 +38,7 @@ export default async function RoomPage({
       displayName={displayName}
       isMember={!!membership}
       myRequest={myRequest ?? null}
-      initialMessages={messages ?? []}
+      initialMessages={(messages ?? []).slice().reverse()}
     />
   );
 }

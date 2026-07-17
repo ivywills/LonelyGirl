@@ -149,17 +149,21 @@ export default function ChatDirectory({
   myRequests,
   userId,
   displayName,
+  popularTags = [],
 }: {
   rooms: Room[];
   memberRoomIds: string[];
   myRequests: JoinRequest[];
   userId: string;
   displayName: string;
+  popularTags?: string[];
 }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [activeTag, setActiveTag] = useState<string | null>(null);
-  const [scope, setScope] = useState<"all" | "joined" | "private">("all");
+  const [scope, setScope] = useState<"all" | "discover" | "joined" | "private">("all");
+  const [remote, setRemote] = useState<Room[] | null>(null);
+  const [searching, setSearching] = useState(false);
   const [creating, setCreating] = useState(false);
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -175,12 +179,47 @@ export default function ChatDirectory({
   const [rules, setRules] = useState("");
 
   const allTags = useMemo(() => {
-    const s = new Set<string>();
+    const s = new Set<string>(popularTags);
     rooms.forEach((r) => r.tags?.forEach((t) => s.add(t)));
-    return [...s].sort();
-  }, [rooms]);
+    return [...s].slice(0, 24);
+  }, [rooms, popularTags]);
 
-  const visible = rooms.filter((r) => {
+  // Server-side search across ALL rooms (not just the first page loaded)
+  useEffect(() => {
+    const q = query.trim().toLowerCase().replace(/[%_,()]/g, "");
+    if (!q && !activeTag) {
+      setRemote(null);
+      return;
+    }
+    setSearching(true);
+    const timer = setTimeout(async () => {
+      const sb = createClient();
+      const found: Room[] = [];
+      if (q) {
+        const [byText, byTag] = await Promise.all([
+          sb
+            .from("chat_rooms")
+            .select("*")
+            .or(`name.ilike.%${q}%,description.ilike.%${q}%`)
+            .order("created_at", { ascending: false })
+            .limit(60),
+          sb.from("chat_rooms").select("*").contains("tags", [q]).limit(60),
+        ]);
+        found.push(...(byText.data ?? []), ...(byTag.data ?? []));
+      }
+      if (activeTag) {
+        const { data } = await sb.from("chat_rooms").select("*").contains("tags", [activeTag]).limit(60);
+        found.push(...(data ?? []));
+      }
+      const seen = new Set<string>();
+      setRemote(found.filter((r) => (seen.has(r.id) ? false : (seen.add(r.id), true))));
+      setSearching(false);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [query, activeTag]);
+
+  const base = remote ?? rooms;
+  const visible = base.filter((r) => {
     const q = query.trim().toLowerCase();
     const matchesQuery =
       !q ||
@@ -191,6 +230,7 @@ export default function ChatDirectory({
     const matchesScope =
       scope === "all" ||
       (scope === "joined" && memberRoomIds.includes(r.id)) ||
+      (scope === "discover" && !memberRoomIds.includes(r.id)) ||
       (scope === "private" && r.is_private);
     return matchesQuery && matchesTag && matchesScope;
   });
@@ -361,6 +401,7 @@ export default function ChatDirectory({
         {(
           [
             ["all", "All rooms"],
+            ["discover", "Not joined"],
             ["joined", "Joined"],
             ["private", "Private"],
           ] as const
@@ -477,7 +518,7 @@ export default function ChatDirectory({
         })}
         {visible.length === 0 && (
           <p style={{ color: "var(--muted)", fontSize: 14 }}>
-            No rooms match — start the first one.
+            {searching ? "Searching all rooms…" : "No rooms match — start the first one."}
           </p>
         )}
       </div>

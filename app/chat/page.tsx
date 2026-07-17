@@ -11,15 +11,16 @@ export default async function ChatPage() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const [{ data: rooms }, { data: memberships }, { data: requests }] =
+  const [{ data: rooms }, { data: memberships }, { data: requests }, { data: popularTags }] =
     await Promise.all([
-      supabase.from("chat_rooms").select("*").order("created_at", { ascending: false }),
+      supabase.from("chat_rooms").select("*").order("created_at", { ascending: false }).limit(100),
       supabase.from("room_members").select("room_id").eq("user_id", user.id),
       supabase
         .from("join_requests")
         .select("*, chat_rooms(name)")
         .eq("user_id", user.id)
         .order("created_at", { ascending: false }),
+      supabase.rpc("popular_tags", { max_tags: 24 }),
     ]);
 
   const displayName =
@@ -35,6 +36,7 @@ export default async function ChatPage() {
       myRequests={requests ?? []}
       userId={user.id}
       displayName={displayName}
+      popularTags={(popularTags ?? []).map((t: { tag: string }) => t.tag)}
     />
   );
 }
