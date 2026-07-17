@@ -38,18 +38,18 @@ export async function uploadRoomImage(
 }
 
 export const ROOM_COLORS = [
-  "#fbd9e0",
-  "#f6e0ee",
-  "#e8def5",
-  "#d9d3f2",
-  "#d7e7f7",
-  "#cfeef2",
-  "#d3f0e4",
-  "#e4f2d8",
-  "#faf3d1",
-  "#fbe6cf",
-  "#f2dfd8",
-  "#eceae4",
+  "#34343f",
+  "#453d5c",
+  "#4d4070",
+  "#5d4579",
+  "#34456b",
+  "#3a608f",
+  "#356e68",
+  "#6d3a58",
+  "#773842",
+  "#5e4830",
+  "#3d5c40",
+  "#52525f",
 ];
 
 export function isLight(hex: string): boolean {
