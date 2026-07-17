@@ -31,8 +31,20 @@ export async function uploadRoomImage(
   userId: string,
   file: File
 ): Promise<string> {
+  const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+  if (["heic", "heif"].includes(ext) || /hei[cf]/i.test(file.type)) {
+    throw new Error(
+      "iPhone HEIC photos can't be shown in most browsers — pick a JPG or PNG, or screenshot the photo and upload that."
+    );
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    throw new Error("That image is over 5MB — try a smaller one.");
+  }
   const path = `${userId}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9_.-]/g, "_")}`;
-  const { error } = await supabase.storage.from("room-images").upload(path, file);
+  const { error } = await supabase.storage.from("room-images").upload(path, file, {
+    contentType: file.type || "image/jpeg",
+    cacheControl: "3600",
+  });
   if (error) throw new Error(error.message);
   return supabase.storage.from("room-images").getPublicUrl(path).data.publicUrl;
 }
@@ -103,8 +115,8 @@ export function ImagePicker({
           </>
         ) : (
           <>
-            <span style={{ fontSize: 26, display: "block", marginBottom: 4 }} aria-hidden>
-              📷
+            <span className="msr" style={{ fontSize: 26, display: "block", marginBottom: 4 }} aria-hidden>
+              add_a_photo
             </span>
             <span style={{ fontSize: 14, fontWeight: 600, display: "block" }}>
               {uploading ? "Uploading…" : "Add a room photo"}
@@ -233,9 +245,19 @@ export default function ChatDirectory({
         </Link>
         <button
           className="primary"
-          style={{ width: "auto", marginLeft: "auto", padding: "8px 18px" }}
+          style={{
+            width: "auto",
+            marginLeft: "auto",
+            padding: "8px 18px",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+          }}
           onClick={() => setCreating((v) => !v)}
         >
+          <span className="msr" style={{ fontSize: 18 }} aria-hidden>
+            {creating ? "close" : "add_circle"}
+          </span>
           {creating ? "Close" : "Create a room"}
         </button>
       </header>
@@ -428,7 +450,12 @@ export default function ChatDirectory({
                 <p style={{ fontWeight: 600, fontSize: 15 }}>
                   {r.name}
                   {r.is_private && (
-                    <span style={{ fontSize: 11, color: sub, marginLeft: 8 }}>PRIVATE</span>
+                    <span style={{ fontSize: 11, color: sub, marginLeft: 8 }}>
+                      <span className="msr" style={{ fontSize: 12, marginRight: 2 }} aria-hidden>
+                        lock
+                      </span>
+                      PRIVATE
+                    </span>
                   )}
                   {memberRoomIds.includes(r.id) && (
                     <span style={{ fontSize: 11, color: light ? "#2e7d4f" : "var(--success)", marginLeft: 8 }}>

@@ -254,13 +254,24 @@ export default function RoomClient({
       }}
     >
       <header style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-        <Link href="/chat" style={{ fontSize: 13, color: acc }}>
-          ← all rooms
+        <Link
+          href="/chat"
+          style={{ fontSize: 13, color: acc, display: "inline-flex", alignItems: "center", gap: 4 }}
+        >
+          <span className="msr" style={{ fontSize: 16 }} aria-hidden>
+            arrow_back
+          </span>
+          all rooms
         </Link>
         <h1 style={{ fontSize: 20 }}>
           {room.name}
           {room.is_private && (
-            <span style={{ fontSize: 11, color: sub, marginLeft: 8 }}>PRIVATE</span>
+            <span style={{ fontSize: 11, color: sub, marginLeft: 8 }}>
+              <span className="msr" style={{ fontSize: 13, marginRight: 2 }} aria-hidden>
+                lock
+              </span>
+              PRIVATE
+            </span>
           )}
         </h1>
         <span style={{ fontSize: 13, color: sub }}>{room.description}</span>
@@ -463,7 +474,10 @@ export default function RoomClient({
             >
               {pinned.map((m) => (
                 <p key={m.id} style={{ fontSize: 13, margin: "3px 0", color: acc }}>
-                  PINNED — <strong>{m.display_name}:</strong> {m.content}
+                  <span className="msr" style={{ fontSize: 14, marginRight: 4 }} aria-hidden>
+                    push_pin
+                  </span>
+                  <strong>{m.display_name}:</strong> {m.content}
                 </p>
               ))}
             </div>
@@ -514,18 +528,21 @@ export default function RoomClient({
                         width: 22,
                         height: 22,
                         padding: 0,
-                        fontSize: 12,
-                        lineHeight: "20px",
                         position: "absolute",
                         bottom: -10,
                         left: 6,
                         borderRadius: "50%",
-                        background: m.pinned ? "var(--accent)" : "var(--card)",
-                        border: "1px solid var(--border)",
-                        opacity: m.pinned ? 1 : 0.65,
+                        background: "rgba(255,255,255,0.95)",
+                        border: "1px solid rgba(0,0,0,0.25)",
+                        color: m.pinned ? "#7c3aed" : "#8a8494",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
                       }}
                     >
-                      📌
+                      <span className="msr" style={{ fontSize: 14 }} aria-hidden>
+                        push_pin
+                      </span>
                     </button>
                   )}
                 </div>
@@ -554,7 +571,9 @@ export default function RoomClient({
               style={{ width: "auto", padding: "0 14px" }}
               aria-label="Emoji picker"
             >
-              :)
+              <span className="msr" style={{ fontSize: 20 }} aria-hidden>
+                mood
+              </span>
             </button>
             <input
               value={input}
@@ -562,8 +581,15 @@ export default function RoomClient({
               placeholder="Say something — or paste a GIF link to share it"
               style={{ marginBottom: 0 }}
             />
-            <button className="primary" type="submit" style={{ width: "auto", padding: "0 20px" }}>
-              Send
+            <button
+              className="primary"
+              type="submit"
+              aria-label="Send message"
+              style={{ width: "auto", padding: "0 18px" }}
+            >
+              <span className="msr" style={{ fontSize: 20 }} aria-hidden>
+                send
+              </span>
             </button>
           </form>
         </>
