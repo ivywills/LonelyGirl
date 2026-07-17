@@ -162,7 +162,7 @@ export default function ChatDirectory({
       <header style={{ display: "flex", alignItems: "baseline", gap: 14, marginBottom: 6 }}>
         <h1 style={{ fontSize: 26 }}>Chatrooms</h1>
         <Link href="/" style={{ fontSize: 13 }}>
-          back to the pile
+          change the channel
         </Link>
         <button
           className="primary"
