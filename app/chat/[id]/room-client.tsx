@@ -26,7 +26,130 @@ type JoinRequest = {
   status: string;
 };
 
-const EMOJIS = ["😀", "😂", "🥹", "😍", "😎", "🥲", "😤", "😭", "💀", "👀", "🔥", "✨", "💜", "🫶", "👍", "🎉", "📺", "🌙"];
+const EMOJI_SET: [string, string, string][] = [
+  ["😀", "grinning happy", "smileys"],
+  ["😁", "beaming grin", "smileys"],
+  ["😂", "joy laughing", "smileys"],
+  ["🤣", "rofl laughing", "smileys"],
+  ["😊", "smile blush", "smileys"],
+  ["😍", "heart eyes love", "smileys"],
+  ["🥰", "love hearts", "smileys"],
+  ["😘", "kiss", "smileys"],
+  ["😜", "wink tongue", "smileys"],
+  ["🤪", "zany crazy", "smileys"],
+  ["🤗", "hug", "smileys"],
+  ["🤔", "thinking hmm", "smileys"],
+  ["😴", "sleepy zzz", "smileys"],
+  ["😎", "cool sunglasses", "smileys"],
+  ["🥹", "holding back tears", "smileys"],
+  ["🥲", "happy tear", "smileys"],
+  ["😭", "crying sob", "smileys"],
+  ["😢", "sad tear", "smileys"],
+  ["😤", "huff frustrated", "smileys"],
+  ["😡", "angry mad", "smileys"],
+  ["😱", "scream shocked", "smileys"],
+  ["😳", "flushed blush", "smileys"],
+  ["🫣", "peek shy", "smileys"],
+  ["🤫", "shush secret", "smileys"],
+  ["🙄", "eye roll", "smileys"],
+  ["😬", "grimace awkward", "smileys"],
+  ["💀", "skull dead", "smileys"],
+  ["👻", "ghost boo", "smileys"],
+  ["🤯", "mind blown", "smileys"],
+  ["😇", "angel halo", "smileys"],
+  ["😈", "devil smirk", "smileys"],
+  ["🤢", "sick nauseous", "smileys"],
+  ["🥶", "cold freezing", "smileys"],
+  ["🥵", "hot heat", "smileys"],
+  ["🤠", "cowboy yeehaw", "smileys"],
+  ["🤓", "nerd glasses", "smileys"],
+  ["👍", "thumbs up yes", "hands"],
+  ["👎", "thumbs down no", "hands"],
+  ["👏", "clap applause", "hands"],
+  ["🙌", "praise hands", "hands"],
+  ["🫶", "heart hands", "hands"],
+  ["🙏", "pray please thanks", "hands"],
+  ["💪", "strong flex", "hands"],
+  ["🤝", "handshake deal", "hands"],
+  ["👀", "eyes looking", "hands"],
+  ["👋", "wave hello bye", "hands"],
+  ["✌️", "peace", "hands"],
+  ["🤞", "fingers crossed luck", "hands"],
+  ["🤙", "call me shaka", "hands"],
+  ["👑", "crown queen king", "hands"],
+  ["❤️", "red heart love", "hearts"],
+  ["🧡", "orange heart", "hearts"],
+  ["💛", "yellow heart", "hearts"],
+  ["💚", "green heart", "hearts"],
+  ["💙", "blue heart", "hearts"],
+  ["💜", "purple heart", "hearts"],
+  ["🖤", "black heart", "hearts"],
+  ["🤍", "white heart", "hearts"],
+  ["💖", "sparkling heart", "hearts"],
+  ["💔", "broken heart", "hearts"],
+  ["❤️‍🔥", "heart on fire", "hearts"],
+  ["💘", "cupid arrow heart", "hearts"],
+  ["🔥", "fire lit", "fun"],
+  ["✨", "sparkles", "fun"],
+  ["🌟", "star glowing", "fun"],
+  ["⚡", "zap lightning", "fun"],
+  ["🎉", "party popper", "fun"],
+  ["🎊", "confetti", "fun"],
+  ["🎈", "balloon", "fun"],
+  ["🏆", "trophy win", "fun"],
+  ["🎮", "game controller", "fun"],
+  ["🎧", "headphones music", "fun"],
+  ["🎵", "music note", "fun"],
+  ["🎬", "movie clapper", "fun"],
+  ["📺", "tv television", "fun"],
+  ["📚", "books study", "fun"],
+  ["🌙", "moon night", "fun"],
+  ["☀️", "sun day", "fun"],
+  ["🌈", "rainbow", "fun"],
+  ["🌸", "blossom flower", "fun"],
+  ["🌹", "rose flower", "fun"],
+  ["🍕", "pizza", "fun"],
+  ["🍔", "burger", "fun"],
+  ["🍟", "fries", "fun"],
+  ["🍩", "donut", "fun"],
+  ["🍪", "cookie", "fun"],
+  ["🧋", "boba bubble tea", "fun"],
+  ["☕", "coffee", "fun"],
+  ["🍿", "popcorn", "fun"],
+  ["🐱", "cat kitty", "fun"],
+  ["🐶", "dog puppy", "fun"],
+  ["🐸", "frog", "fun"],
+  ["🦋", "butterfly", "fun"],
+  ["🚀", "rocket launch", "fun"],
+  ["💯", "hundred points", "fun"],
+  ["✅", "check yes done", "fun"],
+  ["❌", "x no", "fun"],
+  ["💤", "zzz sleep", "fun"],
+  ["🫠", "melting", "smileys"],
+];
+
+const EMOJI_CATS: [string, string][] = [
+  ["smileys", "Smileys"],
+  ["hands", "Hands"],
+  ["hearts", "Hearts"],
+  ["fun", "Fun & things"],
+];
+
+const SHORTCODES: [RegExp, string][] = [
+  [/(^|\s):-?\)(?=\s|$)/g, "$1🙂"],
+  [/(^|\s):-?\((?=\s|$)/g, "$1🙁"],
+  [/(^|\s):-?D(?=\s|$)/g, "$1😄"],
+  [/(^|\s);-?\)(?=\s|$)/g, "$1😉"],
+  [/(^|\s):-?[Pp](?=\s|$)/g, "$1😛"],
+  [/(^|\s):-?[Oo](?=\s|$)/g, "$1😮"],
+  [/(^|\s):-?\/(?=\s|$)/g, "$1😕"],
+  [/(^|\s)<3(?=\s|$)/g, "$1❤️"],
+  [/(^|\s)[Xx]D(?=\s|$)/g, "$1😆"],
+];
+
+function applyShortcodes(text: string): string {
+  return SHORTCODES.reduce((acc, [re, rep]) => acc.replace(re, rep), text);
+}
 
 const GIF_RE = /^https?:\/\/\S+\.(gif|webp)(\?\S*)?$/i;
 const isGif = (s: string) =>
@@ -56,6 +179,7 @@ export default function RoomClient({
   const [input, setInput] = useState("");
   const [note, setNote] = useState("");
   const [showEmoji, setShowEmoji] = useState(false);
+  const [emojiSearch, setEmojiSearch] = useState("");
   const [showRules, setShowRules] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [requests, setRequests] = useState<JoinRequest[]>([]);
@@ -263,12 +387,13 @@ export default function RoomClient({
     lastSendRef.current = now;
     setInput("");
     setShowEmoji(false);
+    const gif = isGif(content);
     const { error: err } = await supabase.from("messages").insert({
       room_id: room.id,
       user_id: userId,
       display_name: displayName,
-      content,
-      kind: isGif(content) ? "gif" : "text",
+      content: gif ? content : applyShortcodes(content),
+      kind: gif ? "gif" : "text",
     });
     if (err) setError(err.message);
   }
@@ -601,8 +726,8 @@ export default function RoomClient({
                         height: 22,
                         padding: 0,
                         position: "absolute",
-                        bottom: -14,
-                        left: -8,
+                        bottom: -18,
+                        left: -14,
                         borderRadius: "50%",
                         background: "rgba(255,255,255,0.95)",
                         border: "1px solid rgba(0,0,0,0.25)",
@@ -623,17 +748,50 @@ export default function RoomClient({
             <div ref={bottomRef} />
           </div>
           {showEmoji && (
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
-              {EMOJIS.map((em) => (
-                <button
-                  key={em}
-                  type="button"
-                  onClick={() => setInput((v) => v + em)}
-                  style={{ width: "auto", padding: "4px 8px", fontSize: 18 }}
-                >
-                  {em}
-                </button>
-              ))}
+            <div
+              className="card"
+              style={{ maxWidth: "none", marginBottom: 8, padding: 12, maxHeight: 240, overflowY: "auto" }}
+            >
+              <input
+                placeholder="Search emojis..."
+                value={emojiSearch}
+                onChange={(e) => setEmojiSearch(e.target.value)}
+                style={{ marginBottom: 10, padding: "6px 10px", fontSize: 13 }}
+              />
+              {EMOJI_CATS.map(([cat, label]) => {
+                const q = emojiSearch.trim().toLowerCase();
+                const items = EMOJI_SET.filter(
+                  ([, name, c]) => c === cat && (!q || name.includes(q))
+                );
+                if (items.length === 0) return null;
+                return (
+                  <div key={cat} style={{ marginBottom: 6 }}>
+                    <p style={{ fontSize: 11, color: "var(--muted)", margin: "0 0 4px" }}>{label}</p>
+                    <div style={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
+                      {items.map(([em, name]) => (
+                        <button
+                          key={em}
+                          type="button"
+                          title={name}
+                          aria-label={name}
+                          onClick={() => setInput((v) => v + em)}
+                          style={{
+                            width: 34,
+                            height: 34,
+                            padding: 0,
+                            fontSize: 20,
+                            background: "transparent",
+                            border: "none",
+                            borderRadius: 6,
+                          }}
+                        >
+                          {em}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
           <form onSubmit={send} style={{ display: "flex", gap: 8 }}>
