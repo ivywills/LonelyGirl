@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { ROOM_COLORS, uploadRoomImage, type Room } from "@/app/chat/rooms-client";
+import { ROOM_COLORS, isLight, uploadRoomImage, type Room } from "@/app/chat/rooms-client";
 
 type Msg = {
   id: number;
@@ -64,6 +64,10 @@ export default function RoomClient({
   const [error, setError] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
   const isCreator = room.creator_id === userId;
+  const light = isLight(room.bg_color);
+  const ink = light ? "#262130" : "var(--text)";
+  const sub = light ? "rgba(38,33,48,0.62)" : "var(--muted)";
+  const acc = light ? "#6d4fc4" : "var(--accent)";
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -246,19 +250,20 @@ export default function RoomClient({
         margin: "0 auto",
         padding: "18px 16px 16px",
         transition: "background .3s",
+        color: ink,
       }}
     >
       <header style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-        <Link href="/chat" style={{ fontSize: 13 }}>
+        <Link href="/chat" style={{ fontSize: 13, color: acc }}>
           ← all rooms
         </Link>
         <h1 style={{ fontSize: 20 }}>
           {room.name}
           {room.is_private && (
-            <span style={{ fontSize: 11, color: "var(--muted)", marginLeft: 8 }}>PRIVATE</span>
+            <span style={{ fontSize: 11, color: sub, marginLeft: 8 }}>PRIVATE</span>
           )}
         </h1>
-        <span style={{ fontSize: 13, color: "var(--muted)" }}>{room.description}</span>
+        <span style={{ fontSize: 13, color: sub }}>{room.description}</span>
         <span style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
           {room.rules && (
             <button
@@ -280,7 +285,7 @@ export default function RoomClient({
       </header>
 
       {room.tags?.length > 0 && (
-        <p style={{ fontSize: 12, color: "var(--accent)", margin: "6px 0 0" }}>
+        <p style={{ fontSize: 12, color: acc, margin: "6px 0 0" }}>
           {room.tags.map((t) => `#${t}`).join(" ")}
         </p>
       )}
@@ -465,11 +470,11 @@ export default function RoomClient({
                 padding: "8px 12px",
                 border: "1px solid var(--border)",
                 borderRadius: 10,
-                background: "rgba(0,0,0,0.25)",
+                background: light ? "rgba(255,255,255,0.5)" : "rgba(0,0,0,0.25)",
               }}
             >
               {pinned.map((m) => (
-                <p key={m.id} style={{ fontSize: 13, margin: "3px 0", color: "var(--accent)" }}>
+                <p key={m.id} style={{ fontSize: 13, margin: "3px 0", color: acc }}>
                   PINNED — <strong>{m.display_name}:</strong> {m.content}
                 </p>
               ))}
@@ -488,7 +493,7 @@ export default function RoomClient({
           >
             {messages.map((m) =>
               m.kind === "system" ? (
-                <p key={m.id} style={{ textAlign: "center", fontSize: 12, color: "var(--muted)" }}>
+                <p key={m.id} style={{ textAlign: "center", fontSize: 12, color: sub }}>
                   {m.content}
                 </p>
               ) : (

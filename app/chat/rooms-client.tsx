@@ -38,19 +38,31 @@ export async function uploadRoomImage(
 }
 
 export const ROOM_COLORS = [
-  "#17171e",
-  "#241f33",
-  "#2b2342",
-  "#3b2a4f",
-  "#16203a",
-  "#1d3a5f",
-  "#173a37",
-  "#3f1c31",
-  "#4a1d24",
-  "#332417",
-  "#1e3320",
-  "#2e2e38",
+  "#fbd9e0",
+  "#f6e0ee",
+  "#e8def5",
+  "#d9d3f2",
+  "#d7e7f7",
+  "#cfeef2",
+  "#d3f0e4",
+  "#e4f2d8",
+  "#faf3d1",
+  "#fbe6cf",
+  "#f2dfd8",
+  "#eceae4",
 ];
+
+export function isLight(hex: string): boolean {
+  try {
+    const n = parseInt(hex.replace("#", "").slice(0, 6), 16);
+    const r = (n >> 16) & 255;
+    const g = (n >> 8) & 255;
+    const b = n & 255;
+    return 0.299 * r + 0.587 * g + 0.114 * b > 150;
+  } catch {
+    return false;
+  }
+}
 
 export default function ChatDirectory({
   rooms,
@@ -167,7 +179,7 @@ export default function ChatDirectory({
       {creating && (
         <form
           onSubmit={createRoom}
-          className="card on-theme"
+          className={`card ${isLight(bgColor) ? "on-theme-light" : "on-theme"}`}
           style={{ maxWidth: "none", marginBottom: 24, background: bgColor, transition: "background .3s" }}
         >
           <h2 style={{ fontSize: 18, marginBottom: 12 }}>New room</h2>
@@ -316,63 +328,71 @@ export default function ChatDirectory({
       )}
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 14 }}>
-        {visible.map((r) => (
-          <Link
-            key={r.id}
-            href={`/chat/${r.id}`}
-            style={{
-              textDecoration: "none",
-              color: "var(--text)",
-              background: r.bg_color,
-              border: "1px solid var(--border)",
-              borderRadius: 14,
-              overflow: "hidden",
-              display: "block",
-            }}
-          >
-            {r.image_url ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={r.image_url}
-                alt=""
-                style={{ width: "100%", height: 110, objectFit: "cover", display: "block" }}
-              />
-            ) : (
-              <div
-                style={{
-                  height: 44,
-                  background: "rgba(255,255,255,0.05)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "var(--muted)",
-                  fontSize: 12,
-                }}
-              >
-                no picture yet
-              </div>
-            )}
-            <div style={{ padding: "12px 14px 14px" }}>
-              <p style={{ fontWeight: 600, fontSize: 15 }}>
-                {r.name}
-                {r.is_private && (
-                  <span style={{ fontSize: 11, color: "var(--muted)", marginLeft: 8 }}>PRIVATE</span>
-                )}
-                {memberRoomIds.includes(r.id) && (
-                  <span style={{ fontSize: 11, color: "var(--success)", marginLeft: 8 }}>JOINED</span>
-                )}
-              </p>
-              {r.description && (
-                <p style={{ fontSize: 13, color: "var(--muted)", margin: "4px 0 0" }}>{r.description}</p>
+        {visible.map((r) => {
+          const light = isLight(r.bg_color);
+          const ink = light ? "#262130" : "var(--text)";
+          const sub = light ? "rgba(38,33,48,0.62)" : "var(--muted)";
+          const acc = light ? "#6d4fc4" : "var(--accent)";
+          return (
+            <Link
+              key={r.id}
+              href={`/chat/${r.id}`}
+              style={{
+                textDecoration: "none",
+                color: ink,
+                background: r.bg_color,
+                border: "1px solid var(--border)",
+                borderRadius: 14,
+                overflow: "hidden",
+                display: "block",
+              }}
+            >
+              {r.image_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={r.image_url}
+                  alt=""
+                  style={{ width: "100%", height: 110, objectFit: "cover", display: "block" }}
+                />
+              ) : (
+                <div
+                  style={{
+                    height: 44,
+                    background: light ? "rgba(0,0,0,0.06)" : "rgba(255,255,255,0.05)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: sub,
+                    fontSize: 12,
+                  }}
+                >
+                  no picture yet
+                </div>
               )}
-              {r.tags?.length > 0 && (
-                <p style={{ fontSize: 12, color: "var(--accent)", margin: "8px 0 0" }}>
-                  {r.tags.map((t) => `#${t}`).join(" ")}
+              <div style={{ padding: "12px 14px 14px" }}>
+                <p style={{ fontWeight: 600, fontSize: 15 }}>
+                  {r.name}
+                  {r.is_private && (
+                    <span style={{ fontSize: 11, color: sub, marginLeft: 8 }}>PRIVATE</span>
+                  )}
+                  {memberRoomIds.includes(r.id) && (
+                    <span style={{ fontSize: 11, color: light ? "#2e7d4f" : "var(--success)", marginLeft: 8 }}>
+                      JOINED
+                    </span>
+                  )}
                 </p>
-              )}
-            </div>
-          </Link>
-        ))}
+                {r.description && (
+                  <p style={{ fontSize: 13, color: sub, margin: "4px 0 0" }}>{r.description}</p>
+                )}
+                {r.tags?.length > 0 && (
+                  <p style={{ fontSize: 12, color: acc, margin: "8px 0 0" }}>
+                    {r.tags.map((t) => `#${t}`).join(" ")}
+                  </p>
+                )}
+              </div>
+            </Link>
+          );
+        })}
         {visible.length === 0 && (
           <p style={{ color: "var(--muted)", fontSize: 14 }}>
             No rooms match — start the first one.

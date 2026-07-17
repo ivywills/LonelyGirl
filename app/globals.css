@@ -104,6 +104,27 @@ textarea:focus {
   color: rgba(255, 255, 255, 0.45);
 }
 
+.on-theme-light label,
+.on-theme-light p {
+  color: #4a4356;
+}
+
+.on-theme-light h2 {
+  color: #262130;
+}
+
+.on-theme-light input,
+.on-theme-light textarea {
+  background: rgba(255, 255, 255, 0.6);
+  border-color: rgba(0, 0, 0, 0.18);
+  color: #262130;
+}
+
+.on-theme-light input::placeholder,
+.on-theme-light textarea::placeholder {
+  color: rgba(0, 0, 0, 0.4);
+}
+
 button {
   width: 100%;
   padding: 11px;
