@@ -68,6 +68,7 @@ export default function ChatDirectory({
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [activeTag, setActiveTag] = useState<string | null>(null);
+  const [scope, setScope] = useState<"all" | "joined" | "private">("all");
   const [creating, setCreating] = useState(false);
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -93,9 +94,14 @@ export default function ChatDirectory({
     const matchesQuery =
       !q ||
       r.name.toLowerCase().includes(q) ||
+      r.description?.toLowerCase().includes(q) ||
       r.tags?.some((t) => t.toLowerCase().includes(q));
     const matchesTag = !activeTag || r.tags?.includes(activeTag);
-    return matchesQuery && matchesTag;
+    const matchesScope =
+      scope === "all" ||
+      (scope === "joined" && memberRoomIds.includes(r.id)) ||
+      (scope === "private" && r.is_private);
+    return matchesQuery && matchesTag && matchesScope;
   });
 
   async function createRoom(e: React.FormEvent) {
@@ -238,8 +244,8 @@ export default function ChatDirectory({
             />
             Private — people must request to join
           </label>
-          <button className="primary" disabled={busy} type="submit">
-            {busy ? "Creating…" : "Create room"}
+          <button className="primary" disabled={busy || uploading} type="submit">
+            {busy ? "Creating…" : uploading ? "Waiting for upload…" : "Create room"}
           </button>
         </form>
       )}
@@ -257,11 +263,36 @@ export default function ChatDirectory({
       )}
 
       <input
-        placeholder="Search rooms by title or tag..."
+        placeholder="Search all rooms by title, tag or description..."
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         style={{ marginBottom: 10 }}
       />
+      <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+        {(
+          [
+            ["all", "All rooms"],
+            ["joined", "Joined"],
+            ["private", "Private"],
+          ] as const
+        ).map(([key, label]) => (
+          <button
+            key={key}
+            onClick={() => setScope(key)}
+            style={{
+              width: "auto",
+              padding: "4px 14px",
+              fontSize: 13,
+              borderRadius: 999,
+              background: scope === key ? "var(--accent)" : "var(--card)",
+              color: scope === key ? "#131316" : "var(--muted)",
+              border: "1px solid var(--border)",
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
       {allTags.length > 0 && (
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 20 }}>
           {allTags.map((t) => (

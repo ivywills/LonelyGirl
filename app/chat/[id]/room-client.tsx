@@ -137,13 +137,26 @@ export default function RoomClient({
     }
     setMember(true);
     if (room.welcome_message) setWelcomeBanner(room.welcome_message);
-    await supabase.from("messages").insert({
-      room_id: room.id,
-      user_id: userId,
-      display_name: displayName,
-      content: `${displayName} entered the room`,
-      kind: "system",
-    });
+    // Load the room's full history now that membership grants read access
+    const { data: history } = await supabase
+      .from("messages")
+      .select("*")
+      .eq("room_id", room.id)
+      .order("created_at", { ascending: true })
+      .limit(200);
+    if (history) setMessages(history);
+    const { data: joinedMsg } = await supabase
+      .from("messages")
+      .insert({
+        room_id: room.id,
+        user_id: userId,
+        display_name: displayName,
+        content: `${displayName} entered the room`,
+        kind: "system",
+      })
+      .select()
+      .single();
+    if (joinedMsg) setMessages((prev) => (prev.some((m) => m.id === joinedMsg.id) ? prev : [...prev, joinedMsg]));
     router.refresh();
   }
 
@@ -313,7 +326,10 @@ export default function RoomClient({
               setUploading(true);
               setError("");
               try {
-                setRoom({ ...room, image_url: await uploadRoomImage(supabase, userId, file) });
+                const url = await uploadRoomImage(supabase, userId, file);
+                setRoom({ ...room, image_url: url });
+                // Persist immediately so the picture sticks even without hitting Save
+                await supabase.from("chat_rooms").update({ image_url: url }).eq("id", room.id);
               } catch (err) {
                 setError(err instanceof Error ? err.message : "Upload failed.");
               }
