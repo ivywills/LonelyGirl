@@ -334,26 +334,20 @@ export default function EventsClient({
               />
             ))}
           </div>
-          <label
+          <p
             style={{
               display: "flex",
               alignItems: "center",
-              gap: 8,
+              gap: 6,
               marginBottom: 16,
-              fontSize: 14,
+              fontSize: 13,
             }}
           >
-            <input
-              type="checkbox"
-              checked={womenOnly}
-              onChange={(e) => setWomenOnly(e.target.checked)}
-              style={{ width: "auto", margin: 0 }}
-            />
-            <span className="msr" style={{ fontSize: 18, color: WOMEN_PINK }} aria-hidden>
+            <span className="msr" style={{ fontSize: 16, color: WOMEN_PINK }} aria-hidden>
               female
             </span>
-            Women-only event
-          </label>
+            Just so you know — every event on here is women-only.
+          </p>
           <button className="primary" disabled={busy || uploading} type="submit">
             {busy ? "Creating…" : uploading ? "Waiting for upload…" : "Create event"}
           </button>
@@ -370,7 +364,6 @@ export default function EventsClient({
         {(
           [
             ["upcoming", "Upcoming"],
-            ["women", "Women only"],
             ["booked", "Booked"],
             ["hosting", "Hosting"],
             ["past", "Past"],
@@ -384,20 +377,11 @@ export default function EventsClient({
               padding: "4px 14px",
               fontSize: 13,
               borderRadius: 999,
-              background:
-                scope === key ? (key === "women" ? WOMEN_PINK : "var(--accent)") : "var(--card)",
-              color: scope === key ? "#131316" : key === "women" ? WOMEN_PINK : "var(--muted)",
+              background: scope === key ? "var(--accent)" : "var(--card)",
+              color: scope === key ? "#131316" : "var(--muted)",
               border: "1px solid var(--border)",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 4,
             }}
           >
-            {key === "women" && (
-              <span className="msr" style={{ fontSize: 14 }} aria-hidden>
-                female
-              </span>
-            )}
             {label}
           </button>
         ))}
@@ -512,22 +496,6 @@ export default function EventsClient({
               <div style={{ padding: "12px 14px 14px", display: "flex", flexDirection: "column", flex: 1 }}>
                 <p style={{ fontWeight: 600, fontSize: 15 }}>
                   {e.title}
-                  {e.is_women_only && (
-                    <span
-                      style={{
-                        fontSize: 11,
-                        fontWeight: 700,
-                        color: light ? "#a83d76" : WOMEN_PINK,
-                        marginLeft: 8,
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      <span className="msr" style={{ fontSize: 12, marginRight: 2 }} aria-hidden>
-                        female
-                      </span>
-                      WOMEN ONLY
-                    </span>
-                  )}
                   {isPast && (
                     <span style={{ fontSize: 11, color: sub, marginLeft: 8 }}>PAST</span>
                   )}
