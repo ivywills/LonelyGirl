@@ -155,6 +155,42 @@ const GIF_RE = /^https?:\/\/\S+\.(gif|webp)(\?\S*)?$/i;
 const isGif = (s: string) =>
   GIF_RE.test(s.trim()) || /^https?:\/\/(media\.|.*\b)(giphy|tenor)\.com\/\S+$/i.test(s.trim());
 
+const CUSTOM_EMOJI_RE = /\{\{emoji:([^|{}]+)\|([^{}]+)\}\}/g;
+
+function renderMessageContent(content: string): (string | { url: string; name: string })[] {
+  const parts: (string | { url: string; name: string })[] = [];
+  let last = 0;
+  let match: RegExpExecArray | null;
+  CUSTOM_EMOJI_RE.lastIndex = 0;
+  while ((match = CUSTOM_EMOJI_RE.exec(content))) {
+    if (match.index > last) parts.push(content.slice(last, match.index));
+    parts.push({ url: match[1], name: match[2] });
+    last = match.index + match[0].length;
+  }
+  if (last < content.length) parts.push(content.slice(last));
+  return parts;
+}
+
+async function uploadCustomEmoji(
+  supabase: ReturnType<typeof createClient>,
+  userId: string,
+  file: File
+): Promise<string> {
+  if (!file.type.startsWith("image/")) {
+    throw new Error("Custom emoji must be an image.");
+  }
+  if (file.size > 1024 * 1024) {
+    throw new Error("That image is over 1MB — try a smaller one.");
+  }
+  const path = `${userId}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9_.-]/g, "_")}`;
+  const { error } = await supabase.storage.from("custom-emojis").upload(path, file, {
+    contentType: file.type,
+    cacheControl: "3600",
+  });
+  if (error) throw new Error(error.message);
+  return supabase.storage.from("custom-emojis").getPublicUrl(path).data.publicUrl;
+}
+
 export default function RoomClient({
   room: initialRoom,
   userId,
@@ -180,6 +216,11 @@ export default function RoomClient({
   const [note, setNote] = useState("");
   const [showEmoji, setShowEmoji] = useState(false);
   const [emojiSearch, setEmojiSearch] = useState("");
+  const [customEmojis, setCustomEmojis] = useState<{ id: string; name: string; image_url: string }[]>([]);
+  const [showAddEmoji, setShowAddEmoji] = useState(false);
+  const [newEmojiName, setNewEmojiName] = useState("");
+  const [emojiUploading, setEmojiUploading] = useState(false);
+  const [emojiError, setEmojiError] = useState("");
   const [showRules, setShowRules] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [requests, setRequests] = useState<JoinRequest[]>([]);
@@ -217,6 +258,44 @@ export default function RoomClient({
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [member, room.id]);
+
+  useEffect(() => {
+    supabase
+      .from("custom_emojis")
+      .select("id, name, image_url")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: true })
+      .then(({ data }) => {
+        if (data) setCustomEmojis(data);
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function addCustomEmoji(file: File) {
+    const cleanName = (s: string) => s.trim().toLowerCase().replace(/[^a-z0-9_]/g, "");
+    const name = cleanName(newEmojiName) || cleanName(file.name.split(".")[0]);
+    if (!name) {
+      setEmojiError("Give it a short name first.");
+      return;
+    }
+    setEmojiUploading(true);
+    setEmojiError("");
+    try {
+      const url = await uploadCustomEmoji(supabase, userId, file);
+      const { data, error: err } = await supabase
+        .from("custom_emojis")
+        .insert({ user_id: userId, name, image_url: url })
+        .select("id, name, image_url")
+        .single();
+      if (err) throw new Error(err.message);
+      if (data) setCustomEmojis((prev) => [...prev, data]);
+      setNewEmojiName("");
+      setShowAddEmoji(false);
+    } catch (err) {
+      setEmojiError(err instanceof Error ? err.message : "Upload failed.");
+    }
+    setEmojiUploading(false);
+  }
 
   useEffect(() => {
     if (!member) return;
@@ -430,13 +509,24 @@ export default function RoomClient({
         background: room.bg_color,
         display: "flex",
         flexDirection: "column",
-        maxWidth: 860,
-        margin: "0 auto",
+        flex: 1,
+        minWidth: 0,
         padding: "18px 16px 16px",
         transition: "background .3s",
         color: ink,
       }}
     >
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          flex: 1,
+          minWidth: 0,
+          maxWidth: 760,
+          margin: "0 auto",
+          width: "100%",
+        }}
+      >
       <header style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         <Link
           href="/chat"
@@ -460,6 +550,19 @@ export default function RoomClient({
         </h1>
         <span style={{ fontSize: 13, color: sub }}>{room.description}</span>
         <span style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+          <button
+            type="button"
+            style={{ width: "auto", padding: "5px 12px", fontSize: 12 }}
+            onClick={() =>
+              window.open(window.location.pathname, "_blank", "popup=yes,width=980,height=760")
+            }
+            aria-label="Pop out chat"
+            title="Pop out into its own window"
+          >
+            <span className="msr" style={{ fontSize: 16 }} aria-hidden>
+              open_in_new
+            </span>
+          </button>
           {room.rules && (
             <button
               style={{ width: "auto", padding: "5px 12px", fontSize: 12 }}
@@ -714,7 +817,29 @@ export default function RoomClient({
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={m.content} alt="gif" style={{ maxWidth: "100%", borderRadius: 8, display: "block" }} />
                   ) : (
-                    <p style={{ fontSize: 14, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{m.content}</p>
+                    <p style={{ fontSize: 14, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                      {renderMessageContent(m.content).map((part, i) =>
+                        typeof part === "string" ? (
+                          <span key={i}>{part}</span>
+                        ) : (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            key={i}
+                            src={part.url}
+                            alt={part.name}
+                            title={part.name}
+                            style={{
+                              width: 20,
+                              height: 20,
+                              objectFit: "cover",
+                              borderRadius: 4,
+                              verticalAlign: "middle",
+                              margin: "0 1px",
+                            }}
+                          />
+                        )
+                      )}
+                    </p>
                   )}
                   {isCreator && (
                     <button
@@ -758,6 +883,94 @@ export default function RoomClient({
                 onChange={(e) => setEmojiSearch(e.target.value)}
                 style={{ marginBottom: 10, padding: "6px 10px", fontSize: 13 }}
               />
+              <div style={{ marginBottom: 6 }}>
+                <p style={{ fontSize: 11, color: "var(--muted)", margin: "0 0 4px" }}>Yours</p>
+                <div style={{ display: "flex", gap: 2, flexWrap: "wrap", alignItems: "center" }}>
+                  {customEmojis.map((em) => (
+                    <button
+                      key={em.id}
+                      type="button"
+                      title={em.name}
+                      aria-label={em.name}
+                      onClick={() => setInput((v) => v + `{{emoji:${em.image_url}|${em.name}}}`)}
+                      style={{
+                        width: 34,
+                        height: 34,
+                        padding: 2,
+                        background: "transparent",
+                        border: "none",
+                        borderRadius: 6,
+                      }}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={em.image_url}
+                        alt={em.name}
+                        style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: 4 }}
+                      />
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setShowAddEmoji((v) => !v)}
+                    aria-label="Add a custom emoji"
+                    title="Add your own emoji"
+                    style={{
+                      width: 34,
+                      height: 34,
+                      padding: 0,
+                      fontSize: 18,
+                      lineHeight: 1,
+                      background: "transparent",
+                      border: "1px dashed var(--border)",
+                      borderRadius: 6,
+                      color: "var(--muted)",
+                    }}
+                  >
+                    +
+                  </button>
+                </div>
+                {showAddEmoji && (
+                  <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 6, flexWrap: "wrap" }}>
+                    <input
+                      placeholder="name"
+                      value={newEmojiName}
+                      onChange={(e) => setNewEmojiName(e.target.value)}
+                      maxLength={32}
+                      style={{ width: 100, padding: "4px 8px", fontSize: 12, marginBottom: 0 }}
+                    />
+                    <input
+                      id="custom-emoji-file"
+                      type="file"
+                      accept="image/*"
+                      disabled={emojiUploading}
+                      style={{ display: "none" }}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) addCustomEmoji(file);
+                        e.target.value = "";
+                      }}
+                    />
+                    <label
+                      htmlFor="custom-emoji-file"
+                      style={{
+                        fontSize: 12,
+                        padding: "4px 10px",
+                        borderRadius: 6,
+                        border: "1px solid var(--border)",
+                        cursor: emojiUploading ? "wait" : "pointer",
+                      }}
+                    >
+                      {emojiUploading ? "Uploading…" : "Choose image"}
+                    </label>
+                  </div>
+                )}
+                {emojiError && (
+                  <p className="msg-error" style={{ fontSize: 11, marginTop: 4 }}>
+                    {emojiError}
+                  </p>
+                )}
+              </div>
               {EMOJI_CATS.map(([cat, label]) => {
                 const q = emojiSearch.trim().toLowerCase();
                 const items = EMOJI_SET.filter(
@@ -824,6 +1037,7 @@ export default function RoomClient({
           </form>
         </>
       )}
+      </div>
     </main>
   );
 }

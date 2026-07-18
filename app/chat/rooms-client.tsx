@@ -277,7 +277,7 @@ export default function ChatDirectory({
   const pending = myRequests.filter((r) => r.status === "pending");
 
   return (
-    <main style={{ maxWidth: 860, margin: "0 auto", padding: "32px 20px 60px" }}>
+    <main style={{ maxWidth: 860, margin: "0 auto", padding: "32px 20px 60px", width: "100%" }}>
       <header style={{ display: "flex", alignItems: "baseline", gap: 14, marginBottom: 6 }}>
         <h1 style={{ fontSize: 26 }}>Chatrooms</h1>
         <Link href="/" style={{ fontSize: 13 }}>
