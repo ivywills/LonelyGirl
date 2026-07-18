@@ -43,25 +43,17 @@ function previewText(m: LastMessage): string {
   return `${m.display_name}: ${clean}`;
 }
 
-export default function ChatSidebar({ rooms }: { rooms: SidebarRoom[] }) {
+export default function ChatSidebar({
+  rooms,
+  className = "",
+}: {
+  rooms: SidebarRoom[];
+  className?: string;
+}) {
   const pathname = usePathname();
 
   return (
-    <nav
-      style={{
-        width: 280,
-        flexShrink: 0,
-        position: "sticky",
-        top: 0,
-        height: "100vh",
-        overflowY: "auto",
-        borderRight: "1px solid var(--border)",
-        display: "flex",
-        flexDirection: "column",
-        padding: "12px 8px",
-        gap: 4,
-      }}
-    >
+    <nav className={`chat-sidebar ${className}`}>
       <Link
         href="/chat"
         style={{

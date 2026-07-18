@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import ChatSidebar, { type SidebarRoom } from "@/app/chat/chat-sidebar";
+import ChatShell from "@/app/chat/chat-shell";
+import { type SidebarRoom } from "@/app/chat/chat-sidebar";
 
 export default async function ChatLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
@@ -34,10 +35,5 @@ export default async function ChatLayout({ children }: { children: React.ReactNo
     .map((r, i) => ({ ...r, lastMessage: lastMessages[i].data ?? null }))
     .sort((a, b) => (b.lastMessage?.created_at ?? "").localeCompare(a.lastMessage?.created_at ?? ""));
 
-  return (
-    <div style={{ display: "flex", minHeight: "100vh" }}>
-      <ChatSidebar rooms={rooms} />
-      <div style={{ flex: 1, minWidth: 0 }}>{children}</div>
-    </div>
-  );
+  return <ChatShell rooms={rooms}>{children}</ChatShell>;
 }

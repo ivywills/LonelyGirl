@@ -477,10 +477,6 @@ export default function RoomClient({
     if (err) setError(err.message);
   }
 
-  async function togglePin(m: Msg) {
-    await supabase.from("messages").update({ pinned: !m.pinned }).eq("id", m.id);
-  }
-
   async function saveSettings(e: React.FormEvent) {
     e.preventDefault();
     const { error: err } = await supabase
@@ -840,32 +836,6 @@ export default function RoomClient({
                         )
                       )}
                     </p>
-                  )}
-                  {isCreator && (
-                    <button
-                      onClick={() => togglePin(m)}
-                      aria-label={m.pinned ? "Unpin message" : "Pin message"}
-                      title={m.pinned ? "Unpin" : "Pin"}
-                      style={{
-                        width: 22,
-                        height: 22,
-                        padding: 0,
-                        position: "absolute",
-                        bottom: -18,
-                        left: -14,
-                        borderRadius: "50%",
-                        background: "rgba(255,255,255,0.95)",
-                        border: "1px solid rgba(0,0,0,0.25)",
-                        color: m.pinned ? "#7c3aed" : "#8a8494",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                      }}
-                    >
-                      <span className="msr" style={{ fontSize: 14 }} aria-hidden>
-                        push_pin
-                      </span>
-                    </button>
                   )}
                 </div>
               )
