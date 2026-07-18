@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { isLight } from "@/app/chat/rooms-client";
 
 type LastMessage = {
@@ -51,26 +51,33 @@ export default function ChatSidebar({
   className?: string;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
 
   return (
     <nav className={`chat-sidebar ${className}`}>
-      <Link
-        href="/chat"
+      <button
+        type="button"
+        onClick={() => router.push("/chat")}
         style={{
           display: "flex",
           alignItems: "center",
           gap: 6,
           padding: "8px 10px",
           fontSize: 13,
+          width: "auto",
+          background: "transparent",
+          border: "none",
+          fontWeight: 400,
           color: "var(--muted)",
           marginBottom: 6,
+          cursor: "pointer",
         }}
       >
         <span className="msr" style={{ fontSize: 18 }} aria-hidden>
           apps
         </span>
         Browse rooms
-      </Link>
+      </button>
       {rooms.map((r) => {
         const active = pathname === `/chat/${r.id}`;
         const light = isLight(r.bg_color);

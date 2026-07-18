@@ -20,7 +20,7 @@ export default async function ChatPage() {
         .select("*, chat_rooms(name)")
         .eq("user_id", user.id)
         .order("created_at", { ascending: false }),
-      supabase.rpc("popular_tags", { max_tags: 24 }),
+      supabase.rpc("popular_tags", { max_tags: 300 }),
     ]);
 
   const displayName =

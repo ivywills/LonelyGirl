@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { ImagePicker, ROOM_COLORS, isLight, uploadRoomImage, type Room } from "@/app/chat/rooms-client";
@@ -524,15 +523,28 @@ export default function RoomClient({
         }}
       >
       <header style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-        <Link
-          href="/chat"
-          style={{ fontSize: 13, color: acc, display: "inline-flex", alignItems: "center", gap: 4 }}
+        <button
+          type="button"
+          onClick={() => router.push("/chat")}
+          style={{
+            fontSize: 13,
+            color: acc,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 4,
+            width: "auto",
+            padding: 0,
+            background: "transparent",
+            border: "none",
+            fontWeight: 400,
+            cursor: "pointer",
+          }}
         >
           <span className="msr" style={{ fontSize: 16 }} aria-hidden>
             arrow_back
           </span>
           all rooms
-        </Link>
+        </button>
         <h1 style={{ fontSize: 20 }}>
           {room.name}
           {room.is_private && (

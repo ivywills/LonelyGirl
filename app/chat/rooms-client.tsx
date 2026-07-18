@@ -161,7 +161,8 @@ export default function ChatDirectory({
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [activeTag, setActiveTag] = useState<string | null>(null);
-  const [scope, setScope] = useState<"all" | "discover" | "joined" | "private">("all");
+  const [tagQuery, setTagQuery] = useState("");
+  const [scope, setScope] = useState<"all" | "discover" | "joined" | "public" | "private" | "waiting">("all");
   const [remote, setRemote] = useState<Room[] | null>(null);
   const [searching, setSearching] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -178,11 +179,21 @@ export default function ChatDirectory({
   const [welcome, setWelcome] = useState("");
   const [rules, setRules] = useState("");
 
+  // Popularity-ordered (popular_tags RPC first), then any extra tags from loaded rooms
   const allTags = useMemo(() => {
     const s = new Set<string>(popularTags);
     rooms.forEach((r) => r.tags?.forEach((t) => s.add(t)));
-    return [...s].slice(0, 24);
+    return [...s];
   }, [rooms, popularTags]);
+
+  // With hundreds of tags we only surface the top few until the user filters
+  const visibleTags = useMemo(() => {
+    const q = tagQuery.trim().toLowerCase().replace(/^#/, "");
+    const matches = q ? allTags.filter((t) => t.includes(q)) : allTags;
+    const shown = matches.slice(0, q ? 30 : 12);
+    if (activeTag && !shown.includes(activeTag)) shown.unshift(activeTag);
+    return shown;
+  }, [allTags, tagQuery, activeTag]);
 
   // Server-side search across ALL rooms (not just the first page loaded)
   useEffect(() => {
@@ -218,6 +229,8 @@ export default function ChatDirectory({
     return () => clearTimeout(timer);
   }, [query, activeTag]);
 
+  const pendingRoomIds = myRequests.filter((r) => r.status === "pending").map((r) => r.room_id);
+
   const base = remote ?? rooms;
   const visible = base.filter((r) => {
     const q = query.trim().toLowerCase();
@@ -231,7 +244,9 @@ export default function ChatDirectory({
       scope === "all" ||
       (scope === "joined" && memberRoomIds.includes(r.id)) ||
       (scope === "discover" && !memberRoomIds.includes(r.id)) ||
-      (scope === "private" && r.is_private);
+      (scope === "public" && !r.is_private) ||
+      (scope === "private" && r.is_private) ||
+      (scope === "waiting" && pendingRoomIds.includes(r.id));
     return matchesQuery && matchesTag && matchesScope;
   });
 
@@ -274,15 +289,26 @@ export default function ChatDirectory({
     router.push(`/chat/${data.id}`);
   }
 
-  const pending = myRequests.filter((r) => r.status === "pending");
-
   return (
     <main style={{ maxWidth: 860, margin: "0 auto", padding: "32px 20px 60px", width: "100%" }}>
       <header style={{ display: "flex", alignItems: "baseline", gap: 14, marginBottom: 6 }}>
         <h1 style={{ fontSize: 26 }}>Chatrooms</h1>
-        <Link href="/" style={{ fontSize: 13 }}>
+        <button
+          type="button"
+          onClick={() => router.push("/")}
+          style={{
+            fontSize: 13,
+            width: "auto",
+            padding: 0,
+            background: "transparent",
+            border: "none",
+            fontWeight: 400,
+            color: "var(--accent)",
+            cursor: "pointer",
+          }}
+        >
           change the channel
-        </Link>
+        </button>
         <button
           className="primary"
           style={{
@@ -379,32 +405,24 @@ export default function ChatDirectory({
         </form>
       )}
 
-      {pending.length > 0 && (
-        <section className="card" style={{ maxWidth: "none", marginBottom: 24 }}>
-          <h2 style={{ fontSize: 16, marginBottom: 10 }}>Waiting on</h2>
-          {pending.map((r) => (
-            <p key={r.id} style={{ fontSize: 14, color: "var(--muted)", margin: "6px 0" }}>
-              <strong style={{ color: "var(--text)" }}>{r.chat_rooms?.name ?? "a room"}</strong>
-              {r.note ? ` — your note: “${r.note}”` : ""}
-            </p>
-          ))}
-        </section>
-      )}
-
       <input
         placeholder="Search all rooms by title, tag or description..."
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         style={{ marginBottom: 10 }}
       />
-      <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+      <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
         {(
           [
             ["all", "All rooms"],
             ["discover", "Not joined"],
             ["joined", "Joined"],
+            ["public", "Public"],
             ["private", "Private"],
-          ] as const
+            ...(pendingRoomIds.length > 0
+              ? [["waiting", `Waiting (${pendingRoomIds.length})`]]
+              : []),
+          ] as [typeof scope, string][]
         ).map(([key, label]) => (
           <button
             key={key}
@@ -424,24 +442,72 @@ export default function ChatDirectory({
         ))}
       </div>
       {allTags.length > 0 && (
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 20 }}>
-          {allTags.map((t) => (
+        <div
+          style={{
+            display: "flex",
+            columnGap: 12,
+            rowGap: 6,
+            flexWrap: "wrap",
+            alignItems: "center",
+            marginBottom: 20,
+          }}
+        >
+          <input
+            placeholder="Filter tags..."
+            value={tagQuery}
+            onChange={(e) => setTagQuery(e.target.value)}
+            style={{
+              width: 150,
+              padding: "4px 10px",
+              fontSize: 13,
+              marginBottom: 0,
+              borderRadius: 999,
+            }}
+          />
+          {visibleTags.map((t) => {
+            const active = activeTag === t;
+            return (
+              <button
+                key={t}
+                onClick={() => setActiveTag(active ? null : t)}
+                style={{
+                  width: "auto",
+                  padding: 0,
+                  background: "transparent",
+                  border: "none",
+                  cursor: "pointer",
+                  fontSize: 13,
+                  fontWeight: active ? 700 : 400,
+                  color: active ? "var(--accent)" : "var(--muted)",
+                  textDecoration: active ? "underline" : "none",
+                  textUnderlineOffset: 3,
+                }}
+              >
+                #{t}
+              </button>
+            );
+          })}
+          {visibleTags.length === 0 && (
+            <span style={{ fontSize: 12, color: "var(--muted)" }}>no tags match</span>
+          )}
+          {activeTag && (
             <button
-              key={t}
-              onClick={() => setActiveTag(activeTag === t ? null : t)}
+              onClick={() => setActiveTag(null)}
               style={{
                 width: "auto",
-                padding: "4px 12px",
-                fontSize: 13,
-                borderRadius: 999,
-                background: activeTag === t ? "var(--accent)" : "var(--card)",
-                color: activeTag === t ? "#131316" : "var(--muted)",
-                border: "1px solid var(--border)",
+                padding: 0,
+                background: "transparent",
+                border: "none",
+                cursor: "pointer",
+                fontSize: 12,
+                color: "var(--muted)",
+                textDecoration: "underline",
+                textUnderlineOffset: 3,
               }}
             >
-              #{t}
+              clear
             </button>
-          ))}
+          )}
         </div>
       )}
 
@@ -501,6 +567,14 @@ export default function ChatDirectory({
                   {memberRoomIds.includes(r.id) && (
                     <span style={{ fontSize: 11, color: light ? "#2e7d4f" : "var(--success)", marginLeft: 8 }}>
                       JOINED
+                    </span>
+                  )}
+                  {pendingRoomIds.includes(r.id) && (
+                    <span style={{ fontSize: 11, color: light ? "#8a6d1a" : "#fcd34d", marginLeft: 8 }}>
+                      <span className="msr" style={{ fontSize: 12, marginRight: 2 }} aria-hidden>
+                        hourglass_top
+                      </span>
+                      WAITING
                     </span>
                   )}
                 </p>
