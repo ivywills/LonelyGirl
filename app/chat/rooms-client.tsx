@@ -69,11 +69,15 @@ export function ImagePicker({
   imageUrl,
   uploading,
   onFile,
+  title = "Add a room photo",
+  hint = "Rooms with a picture get way more visitors — tap to choose one",
 }: {
   id: string;
   imageUrl: string;
   uploading: boolean;
   onFile: (file: File) => void;
+  title?: string;
+  hint?: string;
 }) {
   return (
     <div style={{ marginBottom: 16 }}>
@@ -119,10 +123,10 @@ export function ImagePicker({
               add_a_photo
             </span>
             <span style={{ fontSize: 14, fontWeight: 600, display: "block" }}>
-              {uploading ? "Uploading…" : "Add a room photo"}
+              {uploading ? "Uploading…" : title}
             </span>
             <span style={{ fontSize: 12, display: "block", marginTop: 3, opacity: 0.75 }}>
-              Rooms with a picture get way more visitors — tap to choose one
+              {hint}
             </span>
           </>
         )}
