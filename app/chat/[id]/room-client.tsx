@@ -150,6 +150,14 @@ function applyShortcodes(text: string): string {
   return SHORTCODES.reduce((acc, [re, rep]) => acc.replace(re, rep), text);
 }
 
+function msgTime(iso: string): string {
+  const d = new Date(iso);
+  const now = new Date();
+  const time = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  if (d.toDateString() === now.toDateString()) return time;
+  return `${d.toLocaleDateString([], { day: "numeric", month: "short" })} ${time}`;
+}
+
 const GIF_RE = /^https?:\/\/\S+\.(gif|webp)(\?\S*)?$/i;
 const isGif = (s: string) =>
   GIF_RE.test(s.trim()) || /^https?:\/\/(media\.|.*\b)(giphy|tenor)\.com\/\S+$/i.test(s.trim());
@@ -197,6 +205,7 @@ export default function RoomClient({
   isMember: initiallyMember,
   myRequest: initialRequest,
   initialMessages,
+  memberCount = 0,
 }: {
   room: Room;
   userId: string;
@@ -204,6 +213,7 @@ export default function RoomClient({
   isMember: boolean;
   myRequest: JoinRequest | null;
   initialMessages: Msg[];
+  memberCount?: number;
 }) {
   const router = useRouter();
   const supabase = createClient();
@@ -240,7 +250,7 @@ export default function RoomClient({
 
   useEffect(() => {
     // Only auto-scroll when the reader is already near the bottom
-    if (stickRef.current) bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (stickRef.current) bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [messages.length]);
 
   useEffect(() => {
@@ -294,6 +304,13 @@ export default function RoomClient({
       setEmojiError(err instanceof Error ? err.message : "Upload failed.");
     }
     setEmojiUploading(false);
+  }
+
+  async function deleteCustomEmoji(em: { id: string; name: string }) {
+    if (!confirm(`Remove your :${em.name}: emoji?`)) return;
+    const { error: err } = await supabase.from("custom_emojis").delete().eq("id", em.id);
+    if (err) setEmojiError(err.message);
+    else setCustomEmojis((prev) => prev.filter((e) => e.id !== em.id));
   }
 
   useEffect(() => {
@@ -399,6 +416,21 @@ export default function RoomClient({
       .select()
       .single();
     if (joinedMsg) setMessages((prev) => (prev.some((m) => m.id === joinedMsg.id) ? prev : [...prev, joinedMsg]));
+    router.refresh();
+  }
+
+  async function leave() {
+    if (!confirm(`Leave "${room.name}"?`)) return;
+    const { error: err } = await supabase
+      .from("room_members")
+      .delete()
+      .eq("room_id", room.id)
+      .eq("user_id", userId);
+    if (err) {
+      setError(err.message);
+      return;
+    }
+    router.push("/chat");
     router.refresh();
   }
 
@@ -557,6 +589,12 @@ export default function RoomClient({
           )}
         </h1>
         <span style={{ fontSize: 13, color: sub }}>{room.description}</span>
+        <span style={{ fontSize: 12, color: sub, whiteSpace: "nowrap" }}>
+          <span className="msr" style={{ fontSize: 13, marginRight: 3 }} aria-hidden>
+            group
+          </span>
+          {memberCount} {memberCount === 1 ? "member" : "members"}
+        </span>
         <span style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
           <button
             type="button"
@@ -585,6 +623,15 @@ export default function RoomClient({
               onClick={() => setShowSettings((v) => !v)}
             >
               Settings{requests.length > 0 ? ` (${requests.length})` : ""}
+            </button>
+          )}
+          {member && !isCreator && (
+            <button
+              style={{ width: "auto", padding: "5px 12px", fontSize: 12 }}
+              onClick={leave}
+              title="Leave this room"
+            >
+              Leave
             </button>
           )}
         </span>
@@ -820,7 +867,10 @@ export default function RoomClient({
                     position: "relative",
                   }}
                 >
-                  <p style={{ fontSize: 11, opacity: 0.75, marginBottom: 2 }}>{m.display_name}</p>
+                  <p style={{ fontSize: 11, opacity: 0.75, marginBottom: 2 }}>
+                    {m.display_name}
+                    <span style={{ marginLeft: 8, fontSize: 10, opacity: 0.8 }}>{msgTime(m.created_at)}</span>
+                  </p>
                   {m.kind === "gif" ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={m.content} alt="gif" style={{ maxWidth: "100%", borderRadius: 8, display: "block" }} />
@@ -869,28 +919,54 @@ export default function RoomClient({
                 <p style={{ fontSize: 11, color: "var(--muted)", margin: "0 0 4px" }}>Yours</p>
                 <div style={{ display: "flex", gap: 2, flexWrap: "wrap", alignItems: "center" }}>
                   {customEmojis.map((em) => (
-                    <button
-                      key={em.id}
-                      type="button"
-                      title={em.name}
-                      aria-label={em.name}
-                      onClick={() => setInput((v) => v + `{{emoji:${em.image_url}|${em.name}}}`)}
-                      style={{
-                        width: 34,
-                        height: 34,
-                        padding: 2,
-                        background: "transparent",
-                        border: "none",
-                        borderRadius: 6,
-                      }}
-                    >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={em.image_url}
-                        alt={em.name}
-                        style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: 4 }}
-                      />
-                    </button>
+                    <span key={em.id} style={{ position: "relative", display: "inline-block" }}>
+                      <button
+                        type="button"
+                        title={em.name}
+                        aria-label={em.name}
+                        onClick={() => setInput((v) => v + `{{emoji:${em.image_url}|${em.name}}}`)}
+                        style={{
+                          width: 34,
+                          height: 34,
+                          padding: 2,
+                          background: "transparent",
+                          border: "none",
+                          borderRadius: 6,
+                        }}
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={em.image_url}
+                          alt={em.name}
+                          style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: 4 }}
+                        />
+                      </button>
+                      <button
+                        type="button"
+                        aria-label={`Delete ${em.name} emoji`}
+                        title={`Remove :${em.name}:`}
+                        onClick={() => deleteCustomEmoji(em)}
+                        style={{
+                          position: "absolute",
+                          top: -3,
+                          right: -3,
+                          width: 14,
+                          height: 14,
+                          padding: 0,
+                          borderRadius: "50%",
+                          fontSize: 9,
+                          lineHeight: 1,
+                          background: "var(--card)",
+                          border: "1px solid var(--border)",
+                          color: "var(--muted)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        ×
+                      </button>
+                    </span>
                   ))}
                   <button
                     type="button"

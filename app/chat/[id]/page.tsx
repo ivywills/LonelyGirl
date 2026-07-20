@@ -19,11 +19,13 @@ export default async function RoomPage({
   const { data: room } = await supabase.from("chat_rooms").select("*").eq("id", id).single();
   if (!room) notFound();
 
-  const [{ data: membership }, { data: myRequest }, { data: messages }] = await Promise.all([
-    supabase.from("room_members").select("user_id").eq("room_id", id).eq("user_id", user.id).maybeSingle(),
-    supabase.from("join_requests").select("*").eq("room_id", id).eq("user_id", user.id).maybeSingle(),
-    supabase.from("messages").select("*").eq("room_id", id).order("created_at", { ascending: false }).limit(50),
-  ]);
+  const [{ data: membership }, { data: myRequest }, { data: messages }, { count: memberCount }] =
+    await Promise.all([
+      supabase.from("room_members").select("user_id").eq("room_id", id).eq("user_id", user.id).maybeSingle(),
+      supabase.from("join_requests").select("*").eq("room_id", id).eq("user_id", user.id).maybeSingle(),
+      supabase.from("messages").select("*").eq("room_id", id).order("created_at", { ascending: false }).limit(50),
+      supabase.from("room_members").select("*", { count: "exact", head: true }).eq("room_id", id),
+    ]);
 
   const displayName =
     (user.user_metadata?.full_name as string) ||
@@ -39,6 +41,7 @@ export default async function RoomPage({
       isMember={!!membership}
       myRequest={myRequest ?? null}
       initialMessages={(messages ?? []).slice().reverse()}
+      memberCount={memberCount ?? 0}
     />
   );
 }

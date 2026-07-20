@@ -50,6 +50,45 @@ function formatWhen(iso: string): string {
   return `${date} · ${time}`;
 }
 
+// "Today" / "Tomorrow" / "In 4 days" for anything within the week
+function relDay(iso: string): string | null {
+  const d = new Date(iso);
+  const now = new Date();
+  const midnight = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diff = Math.round((midnight(d) - midnight(now)) / 86400000);
+  if (diff === 0) return "Today";
+  if (diff === 1) return "Tomorrow";
+  if (diff > 1 && diff < 7) return `In ${diff} days`;
+  return null;
+}
+
+function icsHref(e: EventRow): string {
+  const dt = (d: Date) => d.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+  const clean = (s: string) => s.replace(/[\n\r]/g, " ").replace(/[,;\\]/g, " ");
+  const start = new Date(e.starts_at);
+  const end = new Date(start.getTime() + 2 * 60 * 60 * 1000);
+  const body = [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//LonelyGirl//Events//EN",
+    "BEGIN:VEVENT",
+    `UID:${e.id}@lonelygirl`,
+    `DTSTAMP:${dt(new Date())}`,
+    `DTSTART:${dt(start)}`,
+    `DTEND:${dt(end)}`,
+    `SUMMARY:${clean(e.title)}`,
+    e.location ? `LOCATION:${clean(e.location)}` : "",
+    e.description ? `DESCRIPTION:${clean(e.description)}` : "",
+    "END:VEVENT",
+    "END:VCALENDAR",
+  ]
+    .filter(Boolean)
+    .join("\r\n");
+  return "data:text/calendar;charset=utf-8," + encodeURIComponent(body);
+}
+
+const isUrl = (s: string) => /^https?:\/\//i.test(s.trim());
+
 export default function EventsClient({
   events,
   initialAttendees,
@@ -144,6 +183,18 @@ export default function EventsClient({
     else setAttendees((prev) => prev.filter((a) => !(a.event_id === e.id && a.user_id === userId)));
   }
 
+  async function deleteEvent(e: EventRow) {
+    if (!confirm(`Delete "${e.title}"? Everyone's bookings go with it.`)) return;
+    setError("");
+    const supabase = createClient();
+    const { error: err } = await supabase.from("events").delete().eq("id", e.id);
+    if (err) setError(err.message);
+    else {
+      setLocalEvents((prev) => prev.filter((x) => x.id !== e.id));
+      setAttendees((prev) => prev.filter((a) => a.event_id !== e.id));
+    }
+  }
+
   async function createEvent(ev: React.FormEvent) {
     ev.preventDefault();
     if (!title.trim() || !startsAt) return;
@@ -208,6 +259,28 @@ export default function EventsClient({
           }}
         >
           change the channel
+        </button>
+        <button
+          type="button"
+          onClick={() => router.push("/chat")}
+          style={{
+            fontSize: 13,
+            width: "auto",
+            padding: 0,
+            background: "transparent",
+            border: "none",
+            fontWeight: 400,
+            color: "var(--accent)",
+            cursor: "pointer",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 3,
+          }}
+        >
+          <span className="msr" style={{ fontSize: 15 }} aria-hidden>
+            forum
+          </span>
+          chatrooms
         </button>
         <button
           className="primary"
@@ -504,6 +577,9 @@ export default function EventsClient({
                   <span className="msr" style={{ fontSize: 14, marginRight: 4 }} aria-hidden>
                     event
                   </span>
+                  {!isPast && relDay(e.starts_at) && (
+                    <strong style={{ marginRight: 4 }}>{relDay(e.starts_at)} ·</strong>
+                  )}
                   {formatWhen(e.starts_at)}
                 </p>
                 {e.location && (
@@ -511,7 +587,18 @@ export default function EventsClient({
                     <span className="msr" style={{ fontSize: 14, marginRight: 4 }} aria-hidden>
                       location_on
                     </span>
-                    {e.location}
+                    {isUrl(e.location) ? (
+                      <a
+                        href={e.location.trim()}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{ color: "inherit", textDecoration: "underline", textUnderlineOffset: 2 }}
+                      >
+                        {e.location.trim().replace(/^https?:\/\//i, "").slice(0, 40)}
+                      </a>
+                    ) : (
+                      e.location
+                    )}
                   </p>
                 )}
                 {e.description && (
@@ -526,12 +613,69 @@ export default function EventsClient({
                     paddingTop: 12,
                   }}
                 >
-                  <span style={{ fontSize: 12, color: sub }}>
-                    {going} going
+                  <span
+                    style={{ fontSize: 12, color: sub }}
+                    title={attendees
+                      .filter((a) => a.event_id === e.id)
+                      .map((a) => a.display_name || "someone")
+                      .join(", ")}
+                  >
+                    {going === 0
+                      ? "No one yet — be the first"
+                      : `${attendees
+                          .filter((a) => a.event_id === e.id)
+                          .slice(0, 2)
+                          .map((a) => a.display_name || "someone")
+                          .join(", ")}${going > 2 ? ` +${going - 2}` : ""} going`}
                     {spotsLeft != null ? ` · ${spotsLeft} spot${spotsLeft === 1 ? "" : "s"} left` : ""}
                   </span>
                   {!isPast && (
-                    <span style={{ marginLeft: "auto" }}>
+                    <span style={{ marginLeft: "auto", display: "inline-flex", gap: 6, alignItems: "center" }}>
+                      {booked && (
+                        <a
+                          href={icsHref(e)}
+                          download={`${e.title.replace(/[^a-zA-Z0-9 _-]/g, "")}.ics`}
+                          aria-label="Add to calendar"
+                          title="Add to your calendar"
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            width: 28,
+                            height: 28,
+                            borderRadius: 8,
+                            border: "1px solid var(--border)",
+                            color: "inherit",
+                          }}
+                        >
+                          <span className="msr" style={{ fontSize: 16 }} aria-hidden>
+                            calendar_add_on
+                          </span>
+                        </a>
+                      )}
+                      {e.creator_id === userId && (
+                        <button
+                          onClick={() => deleteEvent(e)}
+                          aria-label="Delete event"
+                          title="Delete this event"
+                          style={{
+                            width: 28,
+                            height: 28,
+                            padding: 0,
+                            borderRadius: 8,
+                            background: "transparent",
+                            border: "1px solid var(--border)",
+                            color: "inherit",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
+                        >
+                          <span className="msr" style={{ fontSize: 16 }} aria-hidden>
+                            delete
+                          </span>
+                        </button>
+                      )}
                       {booked ? (
                         <button
                           onClick={() => cancel(e)}

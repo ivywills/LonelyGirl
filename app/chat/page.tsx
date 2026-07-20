@@ -11,17 +11,28 @@ export default async function ChatPage() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const [{ data: rooms }, { data: memberships }, { data: requests }, { data: popularTags }] =
-    await Promise.all([
-      supabase.from("chat_rooms").select("*").order("created_at", { ascending: false }).limit(100),
-      supabase.from("room_members").select("room_id").eq("user_id", user.id),
-      supabase
-        .from("join_requests")
-        .select("*, chat_rooms(name)")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false }),
-      supabase.rpc("popular_tags", { max_tags: 300 }),
-    ]);
+  const [
+    { data: rooms },
+    { data: memberships },
+    { data: requests },
+    { data: popularTags },
+    { data: allMemberships },
+  ] = await Promise.all([
+    supabase.from("chat_rooms").select("*").order("created_at", { ascending: false }).limit(100),
+    supabase.from("room_members").select("room_id").eq("user_id", user.id),
+    supabase
+      .from("join_requests")
+      .select("*, chat_rooms(name)")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false }),
+    supabase.rpc("popular_tags", { max_tags: 300 }),
+    supabase.from("room_members").select("room_id").limit(10000),
+  ]);
+
+  const memberCounts: Record<string, number> = {};
+  (allMemberships ?? []).forEach((m) => {
+    memberCounts[m.room_id] = (memberCounts[m.room_id] ?? 0) + 1;
+  });
 
   const displayName =
     (user.user_metadata?.full_name as string) ||
@@ -37,6 +48,7 @@ export default async function ChatPage() {
       userId={user.id}
       displayName={displayName}
       popularTags={(popularTags ?? []).map((t: { tag: string }) => t.tag)}
+      memberCounts={memberCounts}
     />
   );
 }

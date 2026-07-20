@@ -154,6 +154,7 @@ export default function ChatDirectory({
   userId,
   displayName,
   popularTags = [],
+  memberCounts = {},
 }: {
   rooms: Room[];
   memberRoomIds: string[];
@@ -161,6 +162,7 @@ export default function ChatDirectory({
   userId: string;
   displayName: string;
   popularTags?: string[];
+  memberCounts?: Record<string, number>;
 }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
@@ -312,6 +314,28 @@ export default function ChatDirectory({
           }}
         >
           change the channel
+        </button>
+        <button
+          type="button"
+          onClick={() => router.push("/events")}
+          style={{
+            fontSize: 13,
+            width: "auto",
+            padding: 0,
+            background: "transparent",
+            border: "none",
+            fontWeight: 400,
+            color: "var(--accent)",
+            cursor: "pointer",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 3,
+          }}
+        >
+          <span className="msr" style={{ fontSize: 15 }} aria-hidden>
+            event
+          </span>
+          events
         </button>
         <button
           className="primary"
@@ -585,6 +609,12 @@ export default function ChatDirectory({
                 {r.description && (
                   <p style={{ fontSize: 13, color: sub, margin: "4px 0 0" }}>{r.description}</p>
                 )}
+                <p style={{ fontSize: 12, color: sub, margin: "6px 0 0" }}>
+                  <span className="msr" style={{ fontSize: 13, marginRight: 3 }} aria-hidden>
+                    group
+                  </span>
+                  {memberCounts[r.id] ?? 0} {(memberCounts[r.id] ?? 0) === 1 ? "member" : "members"}
+                </p>
                 {r.tags?.length > 0 && (
                   <p style={{ fontSize: 12, color: acc, margin: "8px 0 0" }}>
                     {r.tags.map((t) => `#${t}`).join(" ")}

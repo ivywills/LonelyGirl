@@ -78,6 +78,29 @@ export default function ChatSidebar({
         </span>
         Browse rooms
       </button>
+      <button
+        type="button"
+        onClick={() => router.push("/events")}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          padding: "8px 10px",
+          fontSize: 13,
+          width: "auto",
+          background: "transparent",
+          border: "none",
+          fontWeight: 400,
+          color: "var(--muted)",
+          marginBottom: 6,
+          cursor: "pointer",
+        }}
+      >
+        <span className="msr" style={{ fontSize: 18 }} aria-hidden>
+          event
+        </span>
+        Events
+      </button>
       {rooms.map((r) => {
         const active = pathname === `/chat/${r.id}`;
         const light = isLight(r.bg_color);
