@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { ImagePicker, ROOM_COLORS, isLight, uploadRoomImage } from "@/app/chat/rooms-client";
+import { ImagePicker, ROOM_COLORS, roomSurface, uploadRoomImage } from "@/app/chat/rooms-client";
 
 export type EventRow = {
   id: string;
@@ -242,7 +242,7 @@ export default function EventsClient({
 
   return (
     <main style={{ maxWidth: 860, margin: "0 auto", padding: "32px 20px 60px", width: "100%" }}>
-      <header style={{ display: "flex", alignItems: "baseline", gap: 14, marginBottom: 6 }}>
+      <header className="page-header" style={{ display: "flex", alignItems: "baseline", gap: 14, marginBottom: 6, flexWrap: "wrap" }}>
         <h1 style={{ fontSize: 26 }}>Events</h1>
         <button
           type="button"
@@ -312,8 +312,8 @@ export default function EventsClient({
       {creating && (
         <form
           onSubmit={createEvent}
-          className={`card ${isLight(bgColor) ? "on-theme-light" : "on-theme"}`}
-          style={{ maxWidth: "none", marginBottom: 24, background: bgColor, transition: "background .3s" }}
+          className="card on-room"
+          style={{ maxWidth: "none", marginBottom: 24, background: roomSurface(bgColor).bg, transition: "background .3s" }}
         >
           <h2 style={{ fontSize: 18, marginBottom: 12 }}>New event</h2>
           <label>Title</label>
@@ -334,9 +334,9 @@ export default function EventsClient({
               width: "100%",
               padding: "10px 12px",
               borderRadius: 8,
-              border: "1px solid var(--border)",
-              background: "var(--bg)",
-              color: "var(--text)",
+              border: "1px solid var(--room-field-border)",
+              background: "var(--room-field-bg)",
+              color: "var(--room-ink)",
               fontSize: 15,
               marginBottom: 16,
               fontFamily: "inherit",
@@ -401,7 +401,7 @@ export default function EventsClient({
                   height: 28,
                   padding: 0,
                   borderRadius: 8,
-                  background: c,
+                  background: roomSurface(c).bg,
                   border: c === bgColor ? "2px solid var(--accent)" : "1px solid var(--border)",
                 }}
               />
@@ -522,9 +522,9 @@ export default function EventsClient({
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 14 }}>
         {visible.map((e) => {
-          const light = isLight(e.bg_color);
-          const ink = light ? "#262130" : "var(--text)";
-          const sub = light ? "rgba(38,33,48,0.62)" : "var(--muted)";
+          const s = roomSurface(e.bg_color);
+          const ink = s.ink;
+          const sub = s.sub;
           const going = counts.get(e.id) ?? 0;
           const isPast = new Date(e.starts_at).getTime() < now;
           const booked = myBookings.has(e.id);
@@ -535,7 +535,7 @@ export default function EventsClient({
               key={e.id}
               style={{
                 color: ink,
-                background: e.bg_color,
+                background: s.bg,
                 border: "1px solid var(--border)",
                 borderRadius: 14,
                 overflow: "hidden",
@@ -555,7 +555,7 @@ export default function EventsClient({
                 <div
                   style={{
                     height: 64,
-                    background: light ? "rgba(0,0,0,0.06)" : "rgba(255,255,255,0.05)",
+                    background: s.tint,
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",

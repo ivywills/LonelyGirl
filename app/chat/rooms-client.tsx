@@ -64,6 +64,53 @@ export const ROOM_COLORS = [
   "#db2777",
 ];
 
+/*
+ * Every colour in ROOM_COLORS has a dark and light display variant defined as
+ * CSS vars in globals.css (--room-<hex>). roomSurface() resolves a stored hex
+ * to theme-aware colours; unknown/legacy hexes fall back to fixed colours
+ * chosen by brightness so they stay readable in either theme.
+ */
+export function roomSurface(hex: string) {
+  const key = (hex ?? "").replace("#", "").toLowerCase();
+  if (ROOM_COLORS.includes(`#${key}`)) {
+    return {
+      bg: `var(--room-${key})`,
+      ink: "var(--room-ink)",
+      sub: "var(--room-sub)",
+      acc: "var(--room-acc)",
+      tint: "var(--room-tint)",
+      strip: "var(--room-strip)",
+      success: "var(--room-success)",
+      warn: "var(--room-warn)",
+    };
+  }
+  if (!isLight(hex)) {
+    // Legacy/custom dark colour: keep it in dark mode, auto-pastel it in light
+    // mode by mixing toward white (see --room-mix in globals.css)
+    return {
+      bg: `color-mix(in srgb, ${hex} var(--room-mix), var(--room-mix-on))`,
+      ink: "var(--room-ink)",
+      sub: "var(--room-sub)",
+      acc: "var(--room-acc)",
+      tint: "var(--room-tint)",
+      strip: "var(--room-strip)",
+      success: "var(--room-success)",
+      warn: "var(--room-warn)",
+    };
+  }
+  // Rare light custom colour: fixed dark inks work in both themes
+  return {
+    bg: hex,
+    ink: "#262130",
+    sub: "rgba(38,33,48,0.62)",
+    acc: "#6d4fc4",
+    tint: "rgba(0,0,0,0.06)",
+    strip: "rgba(255,255,255,0.5)",
+    success: "#2e7d4f",
+    warn: "#8a6d1a",
+  };
+}
+
 export function ImagePicker({
   id,
   imageUrl,
@@ -297,7 +344,7 @@ export default function ChatDirectory({
 
   return (
     <main style={{ maxWidth: 860, margin: "0 auto", padding: "32px 20px 60px", width: "100%" }}>
-      <header style={{ display: "flex", alignItems: "baseline", gap: 14, marginBottom: 6 }}>
+      <header className="page-header" style={{ display: "flex", alignItems: "baseline", gap: 14, marginBottom: 6, flexWrap: "wrap" }}>
         <h1 style={{ fontSize: 26 }}>Chatrooms</h1>
         <button
           type="button"
@@ -362,8 +409,8 @@ export default function ChatDirectory({
       {creating && (
         <form
           onSubmit={createRoom}
-          className={`card ${isLight(bgColor) ? "on-theme-light" : "on-theme"}`}
-          style={{ maxWidth: "none", marginBottom: 24, background: bgColor, transition: "background .3s" }}
+          className="card on-room"
+          style={{ maxWidth: "none", marginBottom: 24, background: roomSurface(bgColor).bg, transition: "background .3s" }}
         >
           <h2 style={{ fontSize: 18, marginBottom: 12 }}>New room</h2>
           {error && <p className="msg-error">{error}</p>}
@@ -408,7 +455,7 @@ export default function ChatDirectory({
                   height: 28,
                   padding: 0,
                   borderRadius: 8,
-                  background: c,
+                  background: roomSurface(c).bg,
                   border: c === bgColor ? "2px solid var(--accent)" : "1px solid var(--border)",
                 }}
               />
@@ -541,10 +588,10 @@ export default function ChatDirectory({
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 14 }}>
         {visible.map((r) => {
-          const light = isLight(r.bg_color);
-          const ink = light ? "#262130" : "var(--text)";
-          const sub = light ? "rgba(38,33,48,0.62)" : "var(--muted)";
-          const acc = light ? "#6d4fc4" : "var(--accent)";
+          const s = roomSurface(r.bg_color);
+          const ink = s.ink;
+          const sub = s.sub;
+          const acc = s.acc;
           return (
             <Link
               key={r.id}
@@ -552,7 +599,7 @@ export default function ChatDirectory({
               style={{
                 textDecoration: "none",
                 color: ink,
-                background: r.bg_color,
+                background: s.bg,
                 border: "1px solid var(--border)",
                 borderRadius: 14,
                 overflow: "hidden",
@@ -570,7 +617,7 @@ export default function ChatDirectory({
                 <div
                   style={{
                     height: 44,
-                    background: light ? "rgba(0,0,0,0.06)" : "rgba(255,255,255,0.05)",
+                    background: s.tint,
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
@@ -593,12 +640,12 @@ export default function ChatDirectory({
                     </span>
                   )}
                   {memberRoomIds.includes(r.id) && (
-                    <span style={{ fontSize: 11, color: light ? "#2e7d4f" : "var(--success)", marginLeft: 8 }}>
+                    <span style={{ fontSize: 11, color: s.success, marginLeft: 8 }}>
                       JOINED
                     </span>
                   )}
                   {pendingRoomIds.includes(r.id) && (
-                    <span style={{ fontSize: 11, color: light ? "#8a6d1a" : "#fcd34d", marginLeft: 8 }}>
+                    <span style={{ fontSize: 11, color: s.warn, marginLeft: 8 }}>
                       <span className="msr" style={{ fontSize: 12, marginRight: 2 }} aria-hidden>
                         hourglass_top
                       </span>

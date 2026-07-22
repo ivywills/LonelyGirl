@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { isLight } from "@/app/chat/rooms-client";
+import { roomSurface } from "@/app/chat/rooms-client";
 
 type LastMessage = {
   display_name: string;
@@ -103,9 +103,9 @@ export default function ChatSidebar({
       </button>
       {rooms.map((r) => {
         const active = pathname === `/chat/${r.id}`;
-        const light = isLight(r.bg_color);
-        const ink = light ? "#262130" : "#f4f2f8";
-        const sub = light ? "rgba(38,33,48,0.68)" : "rgba(244,242,248,0.68)";
+        const s = roomSurface(r.bg_color);
+        const ink = s.ink;
+        const sub = s.sub;
         return (
           <Link
             key={r.id}
@@ -116,7 +116,7 @@ export default function ChatSidebar({
               gap: 8,
               padding: "8px 10px",
               borderRadius: 10,
-              background: r.bg_color,
+              background: s.bg,
               color: ink,
               textDecoration: "none",
               border: active ? "2px solid var(--accent)" : "2px solid transparent",
@@ -137,7 +137,7 @@ export default function ChatSidebar({
                   height: 36,
                   borderRadius: 8,
                   flexShrink: 0,
-                  background: light ? "rgba(0,0,0,0.08)" : "rgba(255,255,255,0.12)",
+                  background: s.tint,
                 }}
               />
             )}

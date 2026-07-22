@@ -37,7 +37,7 @@ const TVS: TvDef[] = [
   { id: "a", x: 190, y: 426, w: 200, h: 152, body: "#7a5e42", panel: "#664d38", bezel: "#1c140d", acc1: "#d8b36a", acc2: "#b9a5f7", type: "console", wood: true, controls: "dials", screen: "rect", floor: true },
   { id: "c", x: 211, y: 311, w: 164, h: 118, body: "#6b4d5f", panel: "#5b414e", bezel: "#1d1218", acc1: "#ef99c2", acc2: "#8fb1ff", type: "plain", controls: "sliders", screen: "rect", href: "/events" },
   { id: "e", x: 226, y: 208, w: 140, h: 106, body: "#5c5480", panel: "#4f476c", bezel: "#191426", acc1: "#b9a5f7", acc2: "#ef99c2", type: "antenna", controls: "dials", screen: "rect", shape: "arch", href: "/chat" },
-  { id: "g", x: 396, y: 488, w: 148, h: 112, body: "#7fb2d9", panel: "#6b9dc4", bezel: "#14222e", acc1: "#7de3d0", acc2: "#e0c56a", type: "plain", controls: "toggles", screen: "round", floor: true },
+  { id: "g", x: 396, y: 488, w: 148, h: 112, body: "#7fb2d9", panel: "#6b9dc4", bezel: "#14222e", acc1: "#7de3d0", acc2: "#e0c56a", type: "plain", controls: "toggles", screen: "round", floor: true, href: "/shop" },
   { id: "h", x: 418, y: 415, w: 100, h: 76, body: "#a98ce8", panel: "#9678d4", bezel: "#241a38", acc1: "#c77dff", acc2: "#f0e6ff", type: "plain", controls: "toggles", screen: "rect" },
   { id: "d", x: 560, y: 510, w: 116, h: 90, body: "#4d608c", panel: "#415178", bezel: "#141c2e", acc1: "#8fb1ff", acc2: "#e0c56a", type: "plain", controls: "buttons", screen: "rect", floor: true },
 ];
@@ -930,6 +930,11 @@ export default function TvPile({ signedIn }: { signedIn: boolean }) {
   }, []);
 
   const handleClick = (t: TvDef) => {
+    // The merch shop is public — browsing doesn't need an account
+    if (t.href === "/shop") {
+      router.push("/shop");
+      return;
+    }
     if (!signedIn) {
       router.push("/signup");
     } else {

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { ImagePicker, ROOM_COLORS, isLight, uploadRoomImage, type Room } from "@/app/chat/rooms-client";
+import { ImagePicker, ROOM_COLORS, roomSurface, uploadRoomImage, type Room } from "@/app/chat/rooms-client";
 
 type Msg = {
   id: number;
@@ -243,10 +243,12 @@ export default function RoomClient({
   const stickRef = useRef(true);
   const lastSendRef = useRef(0);
   const isCreator = room.creator_id === userId;
-  const light = isLight(room.bg_color);
-  const ink = light ? "#262130" : "var(--text)";
-  const sub = light ? "rgba(38,33,48,0.62)" : "var(--muted)";
-  const acc = light ? "#6d4fc4" : "var(--accent)";
+  // Theme-aware room surface: known palette colours resolve to CSS vars with
+  // dark and light display variants; legacy hexes get fixed readable inks
+  const surface = roomSurface(room.bg_color);
+  const ink = surface.ink;
+  const sub = surface.sub;
+  const acc = surface.acc;
 
   useEffect(() => {
     // Only auto-scroll when the reader is already near the bottom
@@ -533,7 +535,7 @@ export default function RoomClient({
     <main
       style={{
         minHeight: "100vh",
-        background: room.bg_color,
+        background: surface.bg,
         display: "flex",
         flexDirection: "column",
         flex: 1,
@@ -554,7 +556,7 @@ export default function RoomClient({
           width: "100%",
         }}
       >
-      <header style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+      <header className="page-header" style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         <button
           type="button"
           onClick={() => router.push("/chat")}
@@ -705,7 +707,7 @@ export default function RoomClient({
                   height: 28,
                   padding: 0,
                   borderRadius: 8,
-                  background: c,
+                  background: roomSurface(c).bg,
                   border: c === room.bg_color ? "2px solid var(--accent)" : "1px solid var(--border)",
                 }}
               />
@@ -811,7 +813,7 @@ export default function RoomClient({
                 padding: "8px 12px",
                 border: "1px solid var(--border)",
                 borderRadius: 10,
-                background: light ? "rgba(255,255,255,0.5)" : "rgba(0,0,0,0.25)",
+                background: surface.strip,
               }}
             >
               {pinned.map((m) => (
@@ -859,7 +861,9 @@ export default function RoomClient({
                   style={{
                     alignSelf: m.user_id === userId ? "flex-end" : "flex-start",
                     maxWidth: "78%",
-                    background: m.user_id === userId ? "var(--accent)" : "var(--card)",
+                    // Own bubble stays fixed lavender in both themes — dark text on it
+                    // always passes contrast, and it reads on any room colour
+                    background: m.user_id === userId ? "#a78bfa" : "var(--card)",
                     color: m.user_id === userId ? "#131316" : "var(--text)",
                     border: "1px solid var(--border)",
                     borderRadius: 12,

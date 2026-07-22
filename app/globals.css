@@ -10,6 +10,113 @@
   --success: #4ade80;
 }
 
+/* Light mode — toggled from the settings gear, persisted in localStorage */
+:root[data-theme="light"] {
+  --bg: #f4f2ee;
+  --card: #ffffff;
+  --border: #ddd6cb;
+  --text: #2b2733;
+  --muted: #756e82;
+  --accent: #7c5cd6;
+  --accent-hover: #6a4bc4;
+  --error: #c92a2a;
+  --success: #157347;
+}
+
+/* Keep the gear clear of page-header buttons on narrow screens */
+@media (max-width: 980px) {
+  .page-header {
+    padding-right: 44px;
+  }
+}
+
+/*
+ * User-pickable room/event colours. The hex stored in the database is the
+ * canonical key; each resolves to a dark-mode variant (deep, tuned so light
+ * ink passes contrast) and a light-mode pastel (tuned for dark ink).
+ */
+:root {
+  --room-7c3aed: #7c3aed;
+  --room-9333ea: #9333ea;
+  --room-4f46e5: #4f46e5;
+  --room-2563eb: #2563eb;
+  --room-0891b2: #0e7490;
+  --room-0d9488: #0f766e;
+  --room-16a34a: #15803d;
+  --room-ca8a04: #a16207;
+  --room-ea580c: #c2410c;
+  --room-dc2626: #dc2626;
+  --room-e11d48: #e11d48;
+  --room-db2777: #db2777;
+  --room-ink: #f6f4fa;
+  --room-sub: rgba(246, 244, 250, 0.68);
+  --room-acc: #ddd2ff;
+  --room-tint: rgba(255, 255, 255, 0.06);
+  --room-strip: rgba(0, 0, 0, 0.25);
+  --room-success: #4ade80;
+  --room-warn: #fcd34d;
+  --room-field-bg: rgba(0, 0, 0, 0.35);
+  --room-field-border: rgba(255, 255, 255, 0.22);
+  /* Legacy/custom room colours: shown as-is in dark, auto-pastelled in light */
+  --room-mix: 100%;
+  --room-mix-on: transparent;
+}
+
+:root[data-theme="light"] {
+  --room-7c3aed: #e4d9fb;
+  --room-9333ea: #ecdcf9;
+  --room-4f46e5: #dfdefb;
+  --room-2563eb: #d8e4fb;
+  --room-0891b2: #d3edf5;
+  --room-0d9488: #d2efe9;
+  --room-16a34a: #d7f0dc;
+  --room-ca8a04: #f6ead0;
+  --room-ea580c: #fbe2d2;
+  --room-dc2626: #fadbdb;
+  --room-e11d48: #fbdae2;
+  --room-db2777: #f9dcea;
+  --room-ink: #2c2635;
+  --room-sub: rgba(44, 38, 53, 0.66);
+  --room-acc: #5b3fb8;
+  --room-tint: rgba(0, 0, 0, 0.05);
+  --room-strip: rgba(255, 255, 255, 0.6);
+  --room-success: #1d7a45;
+  --room-warn: #8a6d1a;
+  --room-field-bg: rgba(255, 255, 255, 0.7);
+  --room-field-border: rgba(0, 0, 0, 0.14);
+  --room-mix: 15%;
+  --room-mix-on: #ffffff;
+}
+
+/* Form elements sitting on a room-coloured surface (create/settings forms) */
+.on-room label,
+.on-room p {
+  color: var(--room-sub);
+}
+
+.on-room h2,
+.on-room h3 {
+  color: var(--room-ink);
+}
+
+.on-room input,
+.on-room textarea,
+.on-room select {
+  background: var(--room-field-bg);
+  border-color: var(--room-field-border);
+  color: var(--room-ink);
+}
+
+.on-room input::placeholder,
+.on-room textarea::placeholder {
+  color: var(--room-sub);
+}
+
+/* The light accent is deeper, so primary buttons read better with white text */
+:root[data-theme="light"] button.primary {
+  color: #ffffff;
+}
+
 * {
   box-sizing: border-box;
   margin: 0;
@@ -234,6 +341,33 @@ a:hover {
 .tv-btn:hover .tv-screen canvas,
 .tv-btn:focus-visible .tv-screen canvas {
   filter: brightness(1.45) saturate(1.3);
+}
+
+/* The merch shop follows the global light/dark toggle like every other page */
+.shop-theme {
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+}
+
+.shop-buy {
+  margin-left: auto;
+  background: var(--accent);
+  color: #131316;
+  border-radius: 8px;
+  padding: 7px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.shop-buy:hover {
+  background: var(--accent-hover);
+  text-decoration: none;
+}
+
+:root[data-theme="light"] .shop-buy {
+  color: #ffffff;
 }
 
 .chat-shell {
