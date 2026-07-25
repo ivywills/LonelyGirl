@@ -17,6 +17,7 @@ export type PlaylistRow = {
   color: string;
   song_count: number;
   note: string;
+  image_url: string;
 };
 
 type Phys = {
@@ -37,6 +38,21 @@ const isUrl = (s: string) => /^https?:\/\//i.test(s.trim());
 // straight to href — anything that isn't http(s) falls back to Apple's browse page
 const safeUrl = (s: string) => (isUrl(s) ? s.trim() : APPLE_BROWSE);
 const songs = (n: number) => `${n} song${n === 1 ? "" : "s"}`;
+
+const hostIs = (s: string, host: RegExp) => {
+  try {
+    const u = new URL(s.trim());
+    return u.protocol === "https:" && host.test(u.hostname);
+  } catch {
+    return false;
+  }
+};
+
+const isApplePlaylist = (s: string) => hostIs(s, /^music\.apple\.com$/i);
+// Cover art is stored as a URL, so pin what we'll actually load to Apple's
+// image CDN rather than rendering any address that reached the column
+const safeImage = (s: string | undefined) =>
+  s && hostIs(s, /(^|\.)mzstatic\.com$/i) ? s.trim() : "";
 
 /* ---- record maths ---- */
 
@@ -75,8 +91,8 @@ function labelBg(color: string) {
   return `${rings}, radial-gradient(circle at 42% 36%, ${sh(color, 1.24)}, ${color} 60%, ${sh(color, 0.8)} 100%)`;
 }
 
-// Nothing reads the count from Apple Music yet, so it's whatever the creator
-// typed — never guessed on their behalf
+// Always Apple's number, read off the playlist page — never typed, never
+// guessed. 0 means we haven't got one yet, which blocks the submit.
 function parseCount(raw: string) {
   const n = parseInt(raw, 10);
   return Number.isFinite(n) && n > 0 ? n : 0;
@@ -97,12 +113,15 @@ export default function PlaylistsClient({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [lookingUp, setLookingUp] = useState(false);
+  const [lookupMsg, setLookupMsg] = useState("");
   const [form, setForm] = useState({
     name: "",
     url: "",
     count: "",
     color: ROOM_COLORS[11],
     note: "",
+    image: "",
   });
 
   const stageRef = useRef<HTMLDivElement>(null);
@@ -245,6 +264,88 @@ export default function PlaylistsClient({
     return () => cancelAnimationFrame(raf);
   }, []);
 
+  // The link is the source of truth: cover and song count always come from
+  // Apple, never from typing. Debounced because it runs while the field is
+  // still being edited. The name is only seeded, so it stays yours to change.
+  useEffect(() => {
+    const url = form.url.trim();
+    const clear = (msg: string) => {
+      setLookingUp(false);
+      setLookupMsg(msg);
+      setForm((f) => (f.image || f.count ? { ...f, image: "", count: "" } : f));
+    };
+    if (!url) return clear("");
+    if (!isApplePlaylist(url)) return clear("That needs to be a music.apple.com link.");
+
+    let cancelled = false;
+    setLookingUp(true);
+    setLookupMsg("");
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/playlist-art?url=${encodeURIComponent(url)}`);
+        const data = await res.json();
+        if (cancelled) return;
+        if (!res.ok || !data.songCount) {
+          setLookupMsg(data.error ?? "Couldn't read that playlist.");
+          return;
+        }
+        setForm((f) => ({
+          ...f,
+          image: data.image || "",
+          name: f.name || data.title || "",
+          count: String(data.songCount),
+        }));
+      } catch {
+        if (!cancelled) setLookupMsg("Couldn't reach Apple Music.");
+      } finally {
+        if (!cancelled) setLookingUp(false);
+      }
+    }, 500);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [form.url]);
+
+  // Records added before the cover lookup existed fill themselves in on the
+  // next visit. Only your own rows — the update policy allows nothing else.
+  useEffect(() => {
+    const stale = playlistsRef.current.filter(
+      (p) =>
+        p.creator_id === userId &&
+        !safeImage(p.image_url) &&
+        isApplePlaylist(p.apple_url)
+    );
+    if (!stale.length) return;
+    let cancelled = false;
+    (async () => {
+      const supabase = createClient();
+      for (const pl of stale.slice(0, 12)) {
+        if (cancelled) return;
+        try {
+          const res = await fetch(`/api/playlist-art?url=${encodeURIComponent(pl.apple_url)}`);
+          const data = await res.json();
+          if (cancelled || !res.ok || !data.image) continue;
+          const patch: Partial<PlaylistRow> = { image_url: data.image };
+          if (data.songCount > 0) patch.song_count = data.songCount;
+          const { error: err } = await supabase.from("playlists").update(patch).eq("id", pl.id);
+          if (err || cancelled) continue;
+          // A new count means a new radius — keep collisions matching what's drawn
+          const phy = phys.current[pl.id];
+          if (phy && patch.song_count) phy.r = radius(patch.song_count);
+          setPlaylists((prev) =>
+            prev.map((x) => (x.id === pl.id ? { ...x, ...patch } : x))
+          );
+        } catch {
+          /* leave it for the next visit */
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
+
   const previewCount = parseCount(form.count);
   const ready = !!form.name.trim() && previewCount > 0;
   const selected = playlists.find((p) => p.id === selectedId) ?? null;
@@ -265,8 +366,9 @@ export default function PlaylistsClient({
         color: form.color,
         song_count: previewCount,
         note: form.note.trim(),
+        image_url: safeImage(form.image),
       })
-      .select("id, creator_id, creator_name, title, apple_url, color, song_count, note")
+      .select("id, creator_id, creator_name, title, apple_url, color, song_count, note, image_url")
       .single();
     setBusy(false);
     if (err || !data) {
@@ -275,7 +377,7 @@ export default function PlaylistsClient({
     }
     setPlaylists((prev) => [...prev, data as PlaylistRow]);
     setAdding(false);
-    setForm((f) => ({ name: "", url: "", count: "", color: f.color, note: "" }));
+    setForm((f) => ({ name: "", url: "", count: "", color: f.color, note: "", image: "" }));
   }
 
   async function removeRecord(pl: PlaylistRow) {
@@ -315,6 +417,7 @@ export default function PlaylistsClient({
       {playlists.map((pl) => {
         const r = radius(pl.song_count);
         const labelD = Math.round(2 * r * 0.4);
+        const art = safeImage(pl.image_url);
         return (
           <button
             key={pl.id}
@@ -364,7 +467,11 @@ export default function PlaylistsClient({
                   height: labelD,
                   transform: "translate(-50%,-50%)",
                   borderRadius: "50%",
-                  background: labelBg(pl.color),
+                  // The Apple cover becomes the label; the colour is the
+                  // fallback for records added without a link
+                  backgroundImage: art ? `url("${art}")` : labelBg(pl.color),
+                  backgroundSize: "cover",
+                  backgroundPosition: "center",
                   boxShadow:
                     "inset 0 0 0 1px rgba(0,0,0,0.28), 0 0 0 1px rgba(0,0,0,0.22)",
                 }}
@@ -573,6 +680,7 @@ export default function PlaylistsClient({
                   height: 128,
                   borderRadius: 14,
                   marginBottom: 16,
+                  overflow: "hidden",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
@@ -581,9 +689,17 @@ export default function PlaylistsClient({
                     "0 16px 34px -16px rgba(0,0,0,0.7), inset 0 0 0 1px rgba(255,255,255,0.08)",
                 }}
               >
-                <span className={lobster.className} style={{ fontSize: 52, color: "#fff8ee" }}>
-                  {mono(selected.title)}
-                </span>
+                {safeImage(selected.image_url) ? (
+                  <img
+                    src={safeImage(selected.image_url)}
+                    alt={`${selected.title} cover`}
+                    style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                  />
+                ) : (
+                  <span className={lobster.className} style={{ fontSize: 52, color: "#fff8ee" }}>
+                    {mono(selected.title)}
+                  </span>
+                )}
               </div>
               <div className={lobster.className} style={{ fontSize: 27, lineHeight: 1.05 }}>
                 {selected.title}
@@ -706,7 +822,11 @@ export default function PlaylistsClient({
                     height: 22,
                     transform: "translate(-50%,-50%)",
                     borderRadius: "50%",
-                    background: labelBg(form.color),
+                    backgroundImage: safeImage(form.image)
+                      ? `url("${safeImage(form.image)}")`
+                      : labelBg(form.color),
+                    backgroundSize: "cover",
+                    backgroundPosition: "center",
                   }}
                 />
                 <div
@@ -727,27 +847,37 @@ export default function PlaylistsClient({
                   New record
                 </div>
                 <div style={{ fontSize: 12, color: "var(--muted)" }}>
-                  {previewCount > 0
-                    ? `${songs(previewCount)} · ${2 * radius(previewCount)}px record`
-                    : "the longer the playlist, the bigger the record"}
+                  {lookingUp
+                    ? "reading the playlist…"
+                    : previewCount > 0
+                      ? `${songs(previewCount)} · ${2 * radius(previewCount)}px record`
+                      : "the longer the playlist, the bigger the record"}
                 </div>
               </div>
             </div>
 
             {error && <p className="msg-error">{error}</p>}
 
+            {/* The link comes first now — the cover and the song count are
+                read off it, so there's nothing to fill in below until it's in */}
+            <label>Apple Music playlist link</label>
+            <input
+              value={form.url}
+              onChange={(e) => setForm((f) => ({ ...f, url: e.target.value }))}
+              placeholder="https://music.apple.com/…"
+              style={{ marginBottom: lookupMsg ? 6 : 16 }}
+            />
+            {lookupMsg && (
+              <p className="msg-error" style={{ fontSize: 12.5, marginBottom: 16 }}>
+                {lookupMsg}
+              </p>
+            )}
             <label>Playlist name</label>
             <input
               value={form.name}
               onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
               maxLength={60}
               placeholder="3am feelings"
-            />
-            <label>Apple Music playlist link</label>
-            <input
-              value={form.url}
-              onChange={(e) => setForm((f) => ({ ...f, url: e.target.value }))}
-              placeholder="https://music.apple.com/…"
             />
             <label>Record colour</label>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
@@ -769,24 +899,6 @@ export default function PlaylistsClient({
                   }}
                 />
               ))}
-            </div>
-            <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
-              <div style={{ flex: 1 }}>
-                <label>Songs</label>
-                <input
-                  type="number"
-                  min={1}
-                  value={form.count}
-                  onChange={(e) => setForm((f) => ({ ...f, count: e.target.value }))}
-                  placeholder="how many?"
-                  style={{ marginBottom: 0 }}
-                />
-              </div>
-              <div style={{ flex: 1, display: "flex", alignItems: "flex-end", paddingBottom: 3 }}>
-                <span style={{ fontSize: 11.5, color: "var(--muted)", lineHeight: 1.35 }}>
-                  This sets how big the record lands.
-                </span>
-              </div>
             </div>
             <label>
               A short note <span style={{ opacity: 0.6 }}>(optional)</span>

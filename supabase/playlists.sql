@@ -13,14 +13,29 @@ create table if not exists public.playlists (
   created_at timestamptz not null default now()
 );
 
+-- Cover art pulled off the Apple Music page. Added after the table shipped, so
+-- it's a separate statement — re-running this file adds it to an existing wall.
+alter table public.playlists add column if not exists image_url text not null default '';
+
 -- The wall loads oldest first so the drop order stays stable between visits
 create index if not exists playlists_created_at on public.playlists (created_at);
 
 alter table public.playlists enable row level security;
 
+-- Dropped first because Postgres has no "create policy if not exists", and this
+-- file is meant to be safe to run again when the table gains a column
+drop policy if exists "playlists are viewable by signed-in users" on public.playlists;
 create policy "playlists are viewable by signed-in users" on public.playlists
   for select to authenticated using (true);
+
+drop policy if exists "users add their own playlists" on public.playlists;
 create policy "users add their own playlists" on public.playlists
   for insert to authenticated with check (auth.uid() = creator_id);
+
+drop policy if exists "creators update their playlists" on public.playlists;
+create policy "creators update their playlists" on public.playlists
+  for update to authenticated using (auth.uid() = creator_id);
+
+drop policy if exists "creators delete their playlists" on public.playlists;
 create policy "creators delete their playlists" on public.playlists
   for delete to authenticated using (auth.uid() = creator_id);

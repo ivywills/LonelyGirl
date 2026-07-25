@@ -15,7 +15,9 @@ export default async function PlaylistsPage() {
   // many can pile up on the wall at once.
   const { data: playlists } = await supabase
     .from("playlists")
-    .select("id, creator_id, creator_name, title, apple_url, color, song_count, note")
+    // select("*") so the wall still loads against a database that hasn't had
+    // the image_url migration run yet — the covers just come back empty
+    .select("*")
     .order("created_at", { ascending: true })
     .limit(120);
 
