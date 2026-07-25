@@ -32,7 +32,7 @@ type TvDef = {
 };
 
 const TVS: TvDef[] = [
-  { id: "b", x: 10, y: 468, w: 172, h: 132, body: "#79aad4", panel: "#6795bd", bezel: "#16222e", acc1: "#ffe08a", acc2: "#eaf3fb", type: "panel", controls: "sliders", screen: "rect", floor: true },
+  { id: "b", x: 10, y: 468, w: 172, h: 132, body: "#79aad4", panel: "#6795bd", bezel: "#16222e", acc1: "#ffe08a", acc2: "#eaf3fb", type: "panel", controls: "sliders", screen: "rect", floor: true, href: "/playlists" },
   { id: "f", x: 36, y: 387, w: 108, h: 84, body: "#7a4b6e", panel: "#cfc4b4", bezel: "#20121c", acc1: "#e8955c", acc2: "#7a4b6e", type: "portable", controls: "dials", screen: "rect" },
   { id: "a", x: 190, y: 426, w: 200, h: 152, body: "#7a5e42", panel: "#664d38", bezel: "#1c140d", acc1: "#d8b36a", acc2: "#b9a5f7", type: "console", wood: true, controls: "dials", screen: "rect", floor: true },
   { id: "c", x: 211, y: 311, w: 164, h: 118, body: "#6b4d5f", panel: "#5b414e", bezel: "#1d1218", acc1: "#ef99c2", acc2: "#8fb1ff", type: "plain", controls: "sliders", screen: "rect", href: "/events" },

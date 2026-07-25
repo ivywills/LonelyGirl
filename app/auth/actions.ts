@@ -1,9 +1,10 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { INTRO_COOKIE } from "@/lib/intro";
 
 function getRedirectBase(origin: string | null) {
   return process.env.NEXT_PUBLIC_SITE_URL ?? origin ?? "http://localhost:3000";
@@ -53,6 +54,8 @@ export async function logInWithEmail(formData: FormData) {
     redirect("/login?error=" + encodeURIComponent(error.message));
   }
 
+  // Fresh sign-in gets the static once
+  (await cookies()).delete(INTRO_COOKIE);
   revalidatePath("/", "layout");
   redirect("/");
 }
@@ -60,6 +63,7 @@ export async function logInWithEmail(formData: FormData) {
 export async function signOut() {
   const supabase = await createClient();
   await supabase.auth.signOut();
+  (await cookies()).delete(INTRO_COOKIE);
   revalidatePath("/", "layout");
   redirect("/");
 }

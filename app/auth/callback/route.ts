@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { INTRO_COOKIE } from "@/lib/intro";
 
 // Handles the OAuth (Google) and email-confirmation redirect from Supabase.
 export async function GET(request: Request) {
@@ -13,13 +14,12 @@ export async function GET(request: Request) {
     if (!error) {
       const forwardedHost = request.headers.get("x-forwarded-host");
       const isLocal = process.env.NODE_ENV === "development";
-      if (isLocal) {
-        return NextResponse.redirect(`${origin}${next}`);
-      }
-      if (forwardedHost) {
-        return NextResponse.redirect(`https://${forwardedHost}${next}`);
-      }
-      return NextResponse.redirect(`${origin}${next}`);
+      const response = NextResponse.redirect(
+        !isLocal && forwardedHost ? `https://${forwardedHost}${next}` : `${origin}${next}`
+      );
+      // Fresh sign-in gets the static once
+      response.cookies.delete(INTRO_COOKIE);
+      return response;
     }
   }
 

@@ -1,6 +1,7 @@
 import { type EmailOtpType } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { INTRO_COOKIE } from "@/lib/intro";
 
 // Handles email confirmation links that use token_hash (Supabase email templates).
 export async function GET(request: Request) {
@@ -13,7 +14,10 @@ export async function GET(request: Request) {
     const supabase = await createClient();
     const { error } = await supabase.auth.verifyOtp({ type, token_hash });
     if (!error) {
-      return NextResponse.redirect(`${origin}${next}`);
+      const response = NextResponse.redirect(`${origin}${next}`);
+      // Fresh sign-in gets the static once
+      response.cookies.delete(INTRO_COOKIE);
+      return response;
     }
   }
 

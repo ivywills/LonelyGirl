@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Lobster } from "next/font/google";
+import { INTRO_COOKIE } from "@/lib/intro";
 
 const lobster = Lobster({ subsets: ["latin"], weight: "400" });
 
@@ -13,21 +14,40 @@ const CELL = 2; // size of falling chunks, in low-res pixels
 
 type Cell = { x: number; y: number; release: number };
 
+/*
+ * The cookie is the source of truth, read live at mount rather than trusted
+ * from the `seen` prop alone: coming back to the home page is a client-side
+ * navigation, which can re-render it from a router-cache payload fetched back
+ * when `seen` was still false. Signing in clears the cookie, so a new session
+ * gets the static again.
+ */
+const cookieSet = () =>
+  typeof document !== "undefined" && document.cookie.includes(`${INTRO_COOKIE}=`);
+
 export default function StaticIntro({
+  seen,
   children,
 }: {
+  /** Already watched it this sign-in — go straight to the pile */
+  seen: boolean;
   children: React.ReactNode;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [gone, setGone] = useState(false);
+  const [gone, setGone] = useState(() => seen || cookieSet());
   const [painted, setPainted] = useState(false);
   const paintedRef = useRef(false);
 
   useEffect(() => {
+    if (gone) return;
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
       setGone(true);
       return;
     }
+
+    // Marked as soon as it starts, not when it ends: clicking a TV two seconds
+    // in still counts as having seen it, and replaying it is the whole
+    // complaint
+    document.cookie = `${INTRO_COOKIE}=1; path=/; SameSite=Lax`;
 
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -195,7 +215,7 @@ export default function StaticIntro({
       cancelAnimationFrame(raf);
       window.removeEventListener("resize", build);
     };
-  }, []);
+  }, [gone]);
 
   return (
     <>
