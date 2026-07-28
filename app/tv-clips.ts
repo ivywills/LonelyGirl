@@ -43,7 +43,8 @@ export function drawClip(
   const p: Pal = { hot: acc.hot, cool: acc.cool, a: acc.hot, b: acc.cool };
   ctx.save();
   ctx.clearRect(0, 0, W, H);
-  bgSynth(ctx, W, H, time);
+  // Shop is the one channel without a sun — it sits right behind the tee
+  bgSynth(ctx, W, H, time, id !== "g");
   if (id === "b") subjRecord(ctx, W, H, time, p);
   else if (id === "c") subjEvents(ctx, W, H, time, p);
   else if (id === "e") subjChat(ctx, W, H, time, p);
@@ -112,22 +113,25 @@ function star(ctx: Ctx, cx: number, cy: number, R: number, col: string, t: numbe
 // ---------------------------------------------------------------------------
 // Shared synthwave backdrop + post FX
 // ---------------------------------------------------------------------------
-function bgSynth(ctx: Ctx, W: number, H: number, time: number) {
+/** `sun` off leaves the sky bare — the shop tee needs the room behind it. */
+function bgSynth(ctx: Ctx, W: number, H: number, time: number, sun = true) {
   const g = ctx.createLinearGradient(0, 0, 0, H);
   g.addColorStop(0, "#160a2e"); g.addColorStop(0.58, "#41123f"); g.addColorStop(1, "#12071f");
   ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
 
   const hy = Math.round(H * 0.6);
-  const sr = H * 0.26;
-  const sx = W / 2;
-  const sg = ctx.createLinearGradient(0, hy - sr, 0, hy);
-  sg.addColorStop(0, "#ffd24d"); sg.addColorStop(0.5, "#ff5db1"); sg.addColorStop(1, "#c13aa0");
-  ctx.save();
-  ctx.beginPath(); ctx.arc(sx, hy, sr, Math.PI, 0); ctx.closePath(); ctx.clip();
-  ctx.fillStyle = sg; ctx.fillRect(sx - sr, hy - sr, sr * 2, sr);
-  ctx.fillStyle = "#160a2e";
-  for (let i = 1; i < 5; i++) { const yy = hy - i * (sr * 0.19); ctx.fillRect(sx - sr, yy, sr * 2, Math.max(1, i * 0.5)); }
-  ctx.restore();
+  if (sun) {
+    const sr = H * 0.26;
+    const sx = W / 2;
+    const sg = ctx.createLinearGradient(0, hy - sr, 0, hy);
+    sg.addColorStop(0, "#ffd24d"); sg.addColorStop(0.5, "#ff5db1"); sg.addColorStop(1, "#c13aa0");
+    ctx.save();
+    ctx.beginPath(); ctx.arc(sx, hy, sr, Math.PI, 0); ctx.closePath(); ctx.clip();
+    ctx.fillStyle = sg; ctx.fillRect(sx - sr, hy - sr, sr * 2, sr);
+    ctx.fillStyle = "#160a2e";
+    for (let i = 1; i < 5; i++) { const yy = hy - i * (sr * 0.19); ctx.fillRect(sx - sr, yy, sr * 2, Math.max(1, i * 0.5)); }
+    ctx.restore();
+  }
 
   const gg = ctx.createLinearGradient(0, hy, 0, H);
   gg.addColorStop(0, "#1a0b2e"); gg.addColorStop(1, "#2c0f42");
@@ -257,12 +261,14 @@ function bubble(
 function subjShop(ctx: Ctx, W: number, H: number, time: number, p: Pal) {
   const cx = W / 2, cy = H * 0.52, bob = Math.sin(time * 2) * 1.2, s = Math.min(W, H);
   ctx.save(); ctx.translate(cx, cy + bob); ctx.rotate(Math.sin(time * 1.3) * 0.07);
-  const bw = s * 0.4, bh = s * 0.42;
+  // Narrow body, wide sleeves — reads more like a tee at 40px than the
+  // original near-square torso did
+  const bw = s * 0.28, bh = s * 0.42;
   ctx.fillStyle = p.hot;
   roundRect(ctx, -bw / 2, -bh * 0.18, bw, bh, 2); ctx.fill();
   // sleeves
-  ctx.beginPath(); ctx.moveTo(-bw / 2, -bh * 0.18); ctx.lineTo(-bw / 2 - s * 0.12, -bh * 0.0); ctx.lineTo(-bw / 2 - s * 0.05, bh * 0.16); ctx.lineTo(-bw / 2, bh * 0.02); ctx.closePath(); ctx.fill();
-  ctx.beginPath(); ctx.moveTo(bw / 2, -bh * 0.18); ctx.lineTo(bw / 2 + s * 0.12, -bh * 0.0); ctx.lineTo(bw / 2 + s * 0.05, bh * 0.16); ctx.lineTo(bw / 2, bh * 0.02); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(-bw / 2, -bh * 0.18); ctx.lineTo(-bw / 2 - s * 0.19, -bh * 0.02); ctx.lineTo(-bw / 2 - s * 0.11, bh * 0.24); ctx.lineTo(-bw / 2, bh * 0.04); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(bw / 2, -bh * 0.18); ctx.lineTo(bw / 2 + s * 0.19, -bh * 0.02); ctx.lineTo(bw / 2 + s * 0.11, bh * 0.24); ctx.lineTo(bw / 2, bh * 0.04); ctx.closePath(); ctx.fill();
   // collar + chest star
   ctx.fillStyle = "#0c0c12"; ctx.beginPath(); ctx.arc(0, -bh * 0.18, bw * 0.17, 0, Math.PI); ctx.fill();
   star(ctx, 0, bh * 0.1, s * 0.09, p.cool, 0);
