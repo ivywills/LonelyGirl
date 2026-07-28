@@ -2,12 +2,16 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { drawClip, drawStatic, isLinkedChannel } from "./tv-clips";
 
 const STAGE_W = 680;
 const STAGE_H = 640;
 const DX = 11;
 const DY = 8;
 const NOISE_SCALE = 3;
+// The four sets that link somewhere play a clip instead of noise, on a finer
+// backing store — vector art wants the extra pixels, snow doesn't
+const CLIP_SCALE = 2;
 
 type TvDef = {
   id: string;
@@ -214,6 +218,7 @@ function Tv({
   onAlt?: () => void;
   canvasRef: (el: HTMLCanvasElement | null) => void;
 }) {
+  const screenScale = isLinkedChannel(t.id) ? CLIP_SCALE : NOISE_SCALE;
   const pad = Math.round(t.h * 0.085);
   const scrW = Math.round(t.w * 0.62);
   const scrH = t.h - pad * 2;
@@ -357,8 +362,8 @@ function Tv({
         >
           <canvas
             ref={canvasRef}
-            width={Math.max(14, Math.ceil(cvSize.w / NOISE_SCALE))}
-            height={Math.max(12, Math.ceil(cvSize.h / NOISE_SCALE))}
+            width={Math.max(14, Math.ceil(cvSize.w / screenScale))}
+            height={Math.max(12, Math.ceil(cvSize.h / screenScale))}
             style={{
               width: "100%",
               height: "100%",
@@ -879,46 +884,26 @@ export default function TvPile({ signedIn }: { signedIn: boolean }) {
   useEffect(() => {
     let raf = 0;
     let stopped = false;
+    const start = performance.now();
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const draw = () => {
       if (stopped) return;
+      const time = (performance.now() - start) / 1000;
       for (const cv of canvases.current) {
         if (!cv) continue;
         const ctx = cv.getContext("2d");
         if (!ctx) continue;
         const W = cv.width;
         const H = cv.height;
-        const img = ctx.createImageData(W, H);
-        const d = img.data;
-        for (let p = 0; p < W * H; p++) {
-          const o = p * 4;
-          const v = Math.random();
-          let r = 105 + v * 125;
-          let g = r;
-          let b = r;
-          if (Math.random() < 0.2) {
-            const c = Math.random();
-            const amt = 110;
-            if (c < 0.2) r = Math.min(255, r + amt);
-            else if (c < 0.4) g = Math.min(255, g + amt);
-            else if (c < 0.6) b = Math.min(255, b + amt);
-            else if (c < 0.75) {
-              r = Math.min(255, r + amt);
-              b = Math.min(255, b + amt);
-            } else if (c < 0.9) {
-              g = Math.min(255, g + amt);
-              b = Math.min(255, b + amt);
-            } else {
-              r = Math.min(255, r + amt);
-              g = Math.min(255, g + amt * 0.7);
-            }
-          }
-          d[o] = r;
-          d[o + 1] = g;
-          d[o + 2] = b;
-          d[o + 3] = 255;
+        // Read off the element rather than the loop index — the mobile tower
+        // reorders the sets, so position doesn't tell you which channel it is
+        const id = cv.dataset.tvId;
+        if (id && isLinkedChannel(id)) {
+          // Reduced motion gets one representative frame, like the snow does
+          drawClip(ctx, W, H, id, reduced ? 1.4 : time);
+        } else {
+          drawStatic(ctx, W, H);
         }
-        ctx.putImageData(img, 0, 0);
       }
       if (!reduced) raf = requestAnimationFrame(draw);
     };
@@ -1025,6 +1010,7 @@ export default function TvPile({ signedIn }: { signedIn: boolean }) {
               }
               canvasRef={(el) => {
                 canvases.current[i] = el;
+                if (el) el.dataset.tvId = t.id;
               }}
             />
           ))}
