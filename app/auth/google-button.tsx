@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { isNativeMobile, NATIVE_AUTH_REDIRECT } from "@/lib/runtime";
 
 export default function GoogleButton({ label }: { label: string }) {
   const [loading, setLoading] = useState(false);
@@ -9,16 +10,33 @@ export default function GoogleButton({ label }: { label: string }) {
   async function handleClick() {
     setLoading(true);
     const supabase = createClient();
-    const { error } = await supabase.auth.signInWithOAuth({
+
+    // Google won't render its consent screen inside an app's WebView. On a
+    // phone we ask Supabase for the URL instead of being redirected, open it
+    // in the system browser, and app/native-bridge.tsx finishes the exchange
+    // when the deep link comes back. In a browser tab and in the desktop
+    // window this stays an ordinary redirect.
+    const native = isNativeMobile();
+
+    const { data, error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
+        redirectTo: native ? NATIVE_AUTH_REDIRECT : `${window.location.origin}/auth/callback`,
+        skipBrowserRedirect: native,
       },
     });
+
     if (error) {
       setLoading(false);
       window.location.href =
         "/login?error=" + encodeURIComponent(error.message);
+      return;
+    }
+
+    if (native && data?.url) {
+      const { Browser } = await import("@capacitor/browser");
+      await Browser.open({ url: data.url });
+      setLoading(false);
     }
   }
 

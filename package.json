@@ -2,13 +2,29 @@
   "name": "lonelygirl",
   "version": "0.1.0",
   "private": true,
+  "description": "LonelyGirl — chat rooms, playlists, events and merch",
+  "author": "Ivy Wills",
+  "main": "electron/main.js",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "icon": "node scripts/make-icon.mjs",
+    "desktop": "concurrently -k -n next,electron -c cyan,magenta \"next dev -p 43111\" \"electron .\"",
+    "desktop:build": "next build && node scripts/prepare-desktop.mjs && electron-builder",
+    "desktop:build:mac": "npm run desktop:build -- --mac",
+    "desktop:build:win": "npm run desktop:build -- --win",
+    "desktop:build:linux": "npm run desktop:build -- --linux",
+    "mobile:sync": "node scripts/mobile-sync.mjs",
+    "mobile:assets": "capacitor-assets generate --ios --android --iconBackgroundColor '#1e1e23' --iconBackgroundColorDark '#1e1e23' --splashBackgroundColor '#1e1e23' --splashBackgroundColorDark '#1e1e23'",
+    "mobile:ios": "cap open ios",
+    "mobile:android": "cap open android"
   },
   "dependencies": {
+    "@capacitor/app": "^7.0.0",
+    "@capacitor/browser": "^7.0.0",
+    "@capacitor/core": "^7.0.0",
     "@supabase/ssr": "^0.7.0",
     "@supabase/supabase-js": "^2.50.0",
     "next": "^15.3.4",
@@ -16,9 +32,16 @@
     "react-dom": "^19.1.0"
   },
   "devDependencies": {
+    "@capacitor/android": "^7.0.0",
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^7.0.0",
+    "@capacitor/ios": "^7.0.0",
     "@types/node": "^22",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "concurrently": "^9.1.2",
+    "electron": "^38.8.6",
+    "electron-builder": "^25.1.8",
     "typescript": "^5"
   }
 }

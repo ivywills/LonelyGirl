@@ -25,6 +25,11 @@ export default function HomeNav({ signedIn }: { signedIn: boolean }) {
         justifyContent: "flex-end",
         gap: 16,
         fontSize: 14,
+        // Clears the fixed settings gear, which otherwise lands on top of
+        // these links once the window is about phone-width. Same trick as
+        // .page-header in globals.css; 48 also covers the gear's own
+        // safe-area offset in landscape.
+        paddingRight: 48,
       }}
     >
       {signedIn ? (

@@ -443,3 +443,74 @@ a:hover {
     z-index: 30;
   }
 }
+
+/* ---------------------------------------------------------------------------
+ * Native shells
+ *
+ * The same build is served in a browser tab, in the Electron window and in the
+ * iOS/Android WebView. These rules only matter in the last case — a phone with
+ * a notch and a home indicator — but they're written to be inert everywhere
+ * else: env() falls back to 0px off-device, and the dvh swap is behind
+ * @supports.
+ * ------------------------------------------------------------------------- */
+
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+}
+
+/*
+ * 100vh on iOS measures the viewport as if the browser chrome were hidden, so
+ * full-height panes overflow by the height of the toolbar. dvh is the honest
+ * number; the 100vh declarations above stay as the fallback.
+ */
+@supports (height: 100dvh) {
+  body,
+  main.center,
+  .shop-theme,
+  .chat-shell {
+    min-height: 100dvh;
+  }
+
+  .chat-sidebar {
+    height: 100dvh;
+  }
+}
+
+/* Keep centred pages (login, signup, account) out from under the hardware. */
+main.center {
+  padding-top: max(24px, var(--safe-top));
+  padding-right: max(24px, var(--safe-right));
+  padding-bottom: max(24px, var(--safe-bottom));
+  padding-left: max(24px, var(--safe-left));
+}
+
+.chat-sidebar {
+  padding-top: var(--safe-top);
+  padding-bottom: var(--safe-bottom);
+}
+
+@media (max-width: 860px) {
+  .chat-hamburger {
+    margin-top: calc(10px + var(--safe-top));
+  }
+}
+
+/*
+ * WebView polish: no rubber-band past the page edges, no grey flash on tap,
+ * and no long-press callout — all of which read as "this is a web page in a
+ * frame" rather than as an app. The callout is suppressed body-wide because
+ * nearly every surface here is dragged (the TV pile, the playlist wall, the
+ * event cards); text selection and copy are a separate mechanism and still
+ * work, so chat messages stay copyable.
+ */
+html {
+  overscroll-behavior-y: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  -webkit-touch-callout: none;
+}

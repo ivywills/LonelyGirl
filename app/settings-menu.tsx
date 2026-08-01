@@ -28,7 +28,15 @@ export default function SettingsMenu() {
   }
 
   return (
-    <div style={{ position: "fixed", top: 12, right: 12, zIndex: 60 }}>
+    // Offsets clear the status bar / notch in the mobile shell; env() is 0 elsewhere.
+    <div
+      style={{
+        position: "fixed",
+        top: "calc(12px + env(safe-area-inset-top, 0px))",
+        right: "calc(12px + env(safe-area-inset-right, 0px))",
+        zIndex: 60,
+      }}
+    >
       {open && (
         <div
           onClick={() => setOpen(false)}

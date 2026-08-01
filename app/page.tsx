@@ -19,7 +19,12 @@ export default async function Home() {
     <StaticIntro seen={seenIntro}>
       <main
         className="center"
-        style={{ justifyContent: "flex-start", paddingTop: 40, gap: 8 }}
+        style={{
+          justifyContent: "flex-start",
+          // env() is 0 outside the mobile shell, so this stays 40 on the web
+          paddingTop: "calc(40px + env(safe-area-inset-top, 0px))",
+          gap: 8,
+        }}
       >
         <HomeNav signedIn={!!user} />
         <TvPile signedIn={!!user} />
