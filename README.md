@@ -123,6 +123,41 @@ and exchanges the code for a session.
 
 ---
 
+## TV wall (the home page)
+
+The home page (`app/tv-wall.tsx`) renders the photographic TV-wall artwork as
+a Three.js 2.5D parallax scene — mouse tilts the view (30° / 15° max), each of
+the 8 TVs is a raycast hit zone linking to a page, and every screen is LIVE:
+the channel clips from `app/tv-clips.ts` (chat bubbles, spotlights, vinyl,
+merch tee) and animated static are painted onto the glass every frame, with
+the photo's own glass reflections laid back on top.
+
+Everything editable lives in **`lib/tv-wall-config.mjs`** — hit zones, link
+URLs (auth-aware), per-TV depth, and each screen's glass quad + what plays on
+it. A screen `source` swaps freely between a `channel` painter, animated
+`static`, or any `video` file:
+
+```
+source: { type: "video", src: "/clips/mine.mp4" }
+```
+
+Each TV is a **rigid layer**, not a depth-warped region: a depth map would make
+the parallax a per-pixel re-read of one image, so silhouettes become cliffs in
+the displacement field and edge pixels smear across them (corners visibly
+sliding off the sets). Sprites can't do that. Only the wall and floor are
+warped — smooth gradients with no edges to tear — and the gap a shift opens
+shows an inpainted background plate.
+
+- `public/final_tv_color.png` is the artwork (2016px). The masks, the
+  background plate and the glass-reflection map are generated from it: rerun
+  `npm run layers` after any art or config change.
+- Depth values in the config now only set how far each set travels relative to
+  its neighbours, so they're free to tune — there's no artifact budget.
+- Open `/?debug=1` to see hit zones (green) and screen glass (pink) overlaid
+  while calibrating coordinates.
+
+---
+
 ## App icon
 
 The icon is generated, not hand-drawn — one 1024px source that electron-builder

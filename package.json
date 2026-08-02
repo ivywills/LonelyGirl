@@ -11,6 +11,7 @@
     "start": "next start",
     "lint": "next lint",
     "icon": "node scripts/make-icon.mjs",
+    "layers": "node scripts/make-tv-layers.mjs",
     "desktop": "concurrently -k -n next,electron -c cyan,magenta \"next dev -p 43111\" \"electron .\"",
     "desktop:build": "next build && node scripts/prepare-desktop.mjs && electron-builder",
     "desktop:build:mac": "npm run desktop:build -- --mac",
@@ -27,9 +28,11 @@
     "@capacitor/core": "^7.0.0",
     "@supabase/ssr": "^0.7.0",
     "@supabase/supabase-js": "^2.50.0",
+    "@types/three": "^0.185.3",
     "next": "^15.3.4",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "react-dom": "^19.1.0",
+    "three": "^0.185.1"
   },
   "devDependencies": {
     "@capacitor/android": "^7.0.0",

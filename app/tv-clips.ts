@@ -257,21 +257,30 @@ function bubble(
   ctx.restore();
 }
 
-/** Shop — a bobbing merch tee with a chest star and a swinging price tag. */
+/** Shop — a bobbing deep-blue merch sweater and a swinging price tag. */
 function subjShop(ctx: Ctx, W: number, H: number, time: number, p: Pal) {
   const cx = W / 2, cy = H * 0.52, bob = Math.sin(time * 2) * 1.2, s = Math.min(W, H);
   ctx.save(); ctx.translate(cx, cy + bob); ctx.rotate(Math.sin(time * 1.3) * 0.07);
-  // Narrow body, wide sleeves — reads more like a tee at 40px than the
-  // original near-square torso did
-  const bw = s * 0.28, bh = s * 0.42;
-  ctx.fillStyle = p.hot;
-  roundRect(ctx, -bw / 2, -bh * 0.18, bw, bh, 2); ctx.fill();
-  // sleeves
-  ctx.beginPath(); ctx.moveTo(-bw / 2, -bh * 0.18); ctx.lineTo(-bw / 2 - s * 0.19, -bh * 0.02); ctx.lineTo(-bw / 2 - s * 0.11, bh * 0.24); ctx.lineTo(-bw / 2, bh * 0.04); ctx.closePath(); ctx.fill();
-  ctx.beginPath(); ctx.moveTo(bw / 2, -bh * 0.18); ctx.lineTo(bw / 2 + s * 0.19, -bh * 0.02); ctx.lineTo(bw / 2 + s * 0.11, bh * 0.24); ctx.lineTo(bw / 2, bh * 0.04); ctx.closePath(); ctx.fill();
-  // collar + chest star
-  ctx.fillStyle = "#0c0c12"; ctx.beginPath(); ctx.arc(0, -bh * 0.18, bw * 0.17, 0, Math.PI); ctx.fill();
-  star(ctx, 0, bh * 0.1, s * 0.09, p.cool, 0);
+  // Deep blue knit; the darker tone does the cuffs, hem and collar ribbing
+  const knit = "#2f4db3";
+  const rib = "#1f3379";
+  const bw = s * 0.3, bh = s * 0.46;
+  const y0 = -bh * 0.18;
+  // torso
+  ctx.fillStyle = knit;
+  roundRect(ctx, -bw / 2, y0, bw, bh, 2); ctx.fill();
+  // long sleeves, tapering down beside the body to ribbed cuffs
+  ctx.beginPath(); ctx.moveTo(-bw / 2, y0); ctx.lineTo(-bw / 2 - s * 0.16, y0 + bh * 0.16); ctx.lineTo(-bw / 2 - s * 0.12, y0 + bh * 0.92); ctx.lineTo(-bw / 2 - s * 0.02, y0 + bh * 0.86); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(bw / 2, y0); ctx.lineTo(bw / 2 + s * 0.16, y0 + bh * 0.16); ctx.lineTo(bw / 2 + s * 0.12, y0 + bh * 0.92); ctx.lineTo(bw / 2 + s * 0.02, y0 + bh * 0.86); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = rib;
+  // cuffs
+  ctx.fillRect(-bw / 2 - s * 0.125, y0 + bh * 0.84, s * 0.105, bh * 0.1);
+  ctx.fillRect(bw / 2 + s * 0.02, y0 + bh * 0.84, s * 0.105, bh * 0.1);
+  // hem ribbing
+  ctx.fillRect(-bw / 2, y0 + bh * 0.86, bw, bh * 0.14);
+  // ribbed crew collar — no star on the chest, plain knit
+  ctx.beginPath(); ctx.arc(0, y0, bw * 0.2, 0, Math.PI); ctx.fill();
+  ctx.fillStyle = "#0c0c12"; ctx.beginPath(); ctx.arc(0, y0, bw * 0.13, 0, Math.PI); ctx.fill();
   ctx.restore();
   // price tag on a string
   ctx.save(); ctx.translate(W * 0.76, H * 0.2); ctx.rotate(Math.sin(time * 2.4) * 0.4 - 0.4);
