@@ -141,6 +141,14 @@ it. A screen `source` swaps freely between a `channel` painter, animated
 source: { type: "video", src: "/clips/mine.mp4" }
 ```
 
+**The parallax is currently off** (`PARALLAX_ENABLED` in the config). The whole
+pipeline below is intact and one flag away; with it off the page just loads the
+artwork and paints the live screens onto it, skipping several MB of masks.
+
+Two compositions: the wide artwork, and a portrait one (`final_tv_mobile_*`)
+that restacks the sets into a column for phones. The page picks by viewport
+shape and rebuilds when it changes.
+
 Each TV is a **rigid layer**, not a depth-warped region: a depth map would make
 the parallax a per-pixel re-read of one image, so silhouettes become cliffs in
 the displacement field and edge pixels smear across them (corners visibly

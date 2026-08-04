@@ -11,7 +11,7 @@
 // resolution-relative (uses W/H), so it scales, but line weights are tuned for
 // the small size — bump the canvas resolution only if you want crisper clips.
 
-export type ChannelId = "b" | "c" | "e" | "g";
+export type ChannelId = "b" | "c" | "e" | "g" | "s";
 type Ctx = CanvasRenderingContext2D;
 type Pal = { hot: string; cool: string; a: string; b: string };
 
@@ -21,9 +21,10 @@ const ACCENTS: Record<ChannelId, { hot: string; cool: string }> = {
   c: { hot: "#ef99c2", cool: "#8fb1ff" }, // Events
   e: { hot: "#b9a5f7", cool: "#ef99c2" }, // Chat
   g: { hot: "#7de3d0", cool: "#e0c56a" }, // Shop
+  s: { hot: "#f5d7a1", cool: "#8fd8ef" }, // Scrapbook
 };
 
-const LINKED = new Set<string>(["b", "c", "e", "g"]);
+const LINKED = new Set<string>(["b", "c", "e", "g", "s"]);
 export const isLinkedChannel = (id: string): id is ChannelId => LINKED.has(id);
 
 /**
@@ -43,12 +44,14 @@ export function drawClip(
   const p: Pal = { hot: acc.hot, cool: acc.cool, a: acc.hot, b: acc.cool };
   ctx.save();
   ctx.clearRect(0, 0, W, H);
-  // Shop is the one channel without a sun — it sits right behind the tee
-  bgSynth(ctx, W, H, time, id !== "g");
+  // Shop and scrapbook are the channels without a sun — their subjects sit
+  // right where it would rise
+  bgSynth(ctx, W, H, time, id !== "g" && id !== "s");
   if (id === "b") subjRecord(ctx, W, H, time, p);
   else if (id === "c") subjEvents(ctx, W, H, time, p);
   else if (id === "e") subjChat(ctx, W, H, time, p);
   else if (id === "g") subjShop(ctx, W, H, time, p);
+  else if (id === "s") subjScrapbook(ctx, W, H, time, p);
   fxSynth(ctx, W, H, time, intensity);
   ctx.restore();
 }
@@ -255,6 +258,64 @@ function bubble(
   }
   ctx.globalAlpha = 1;
   ctx.restore();
+}
+
+/**
+ * Scrapbook — a loose pile of pinned photos, the top one swapping out on a
+ * cycle. Each polaroid keeps a fixed tilt so the pile reads as pinned by hand
+ * rather than animated; only the topmost card moves.
+ */
+function subjScrapbook(ctx: Ctx, W: number, H: number, time: number, p: Pal) {
+  const s = Math.min(W, H);
+  const cw = s * 0.42;
+  const ch = s * 0.46;
+  const cx = W / 2;
+  const cy = H * 0.5;
+
+  // The three cards resting underneath, fanned out and static.
+  const rest: [number, number, number][] = [
+    [-s * 0.1, s * 0.04, -0.22],
+    [s * 0.11, s * 0.03, 0.19],
+    [-s * 0.02, -s * 0.02, 0.06],
+  ];
+
+  const card = (dx: number, dy: number, rot: number, tint: string, lift: number) => {
+    ctx.save();
+    ctx.translate(cx + dx, cy + dy - lift);
+    ctx.rotate(rot);
+    // paper
+    ctx.fillStyle = "#efe7da";
+    roundRect(ctx, -cw / 2, -ch / 2, cw, ch, 1.5);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(0,0,0,0.35)";
+    ctx.lineWidth = 0.6;
+    ctx.stroke();
+    // photo window — polaroids leave a wide margin at the bottom
+    ctx.fillStyle = tint;
+    ctx.fillRect(-cw / 2 + 2, -ch / 2 + 2, cw - 4, ch * 0.68);
+    // a horizon scribble so the window reads as a picture, not a swatch
+    ctx.strokeStyle = "rgba(255,255,255,0.5)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(-cw / 2 + 3, -ch / 2 + ch * 0.52);
+    ctx.lineTo(cw / 2 - 3, -ch / 2 + ch * 0.44);
+    ctx.stroke();
+    ctx.restore();
+  };
+
+  rest.forEach(([dx, dy, rot], i) => card(dx, dy, rot, i % 2 ? p.cool : p.hot, 0));
+
+  // Top card: rises, tips, and settles on a 2.4s cycle.
+  const cyc = (time % 2.4) / 2.4;
+  const lift = Math.sin(cyc * Math.PI) * s * 0.16;
+  const rot = -0.05 + Math.sin(cyc * Math.PI * 2) * 0.12;
+  card(0, 0, rot, cyc < 0.5 ? p.hot : p.cool, lift);
+
+  // Pin holding the pile
+  ctx.fillStyle = "#d94f70";
+  ctx.beginPath();
+  ctx.arc(cx, cy - ch / 2 - s * 0.02, s * 0.035, 0, 7);
+  ctx.fill();
 }
 
 /** Shop — a bobbing deep-blue merch sweater and a swinging price tag. */
