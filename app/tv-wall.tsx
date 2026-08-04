@@ -4,9 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import * as THREE from "three";
 import {
-  ART,
-  TVS,
+  SCENES,
+  sceneKeyFor,
   SCENE,
+  PARALLAX_ENABLED,
   hrefFor,
   MAX_TILT_X_DEG,
   MAX_TILT_Y_DEG,
@@ -51,7 +52,7 @@ const vertexShader = /* glsl */ `
  * can't index sampler arrays dynamically and the draw order has to be
  * back-to-front by depth — both are known at build time, so they're baked in.
  */
-function buildFragmentShader(order: number[]) {
+function buildFragmentShader(order: number[], parallax: boolean) {
   const layer = (i: number) => {
     const channel = "rgba"[i % 4];
     const alphaTex = i < 4 ? "uAlphaA" : "uAlphaB";
@@ -70,17 +71,19 @@ function buildFragmentShader(order: number[]) {
   return /* glsl */ `
   precision highp float;
 
-  uniform sampler2D uPlate;
   uniform sampler2D uColor;
+  uniform sampler2D uGlint;
+${parallax ? `
+  uniform sampler2D uPlate;
   uniform sampler2D uAlphaA;
   uniform sampler2D uAlphaB;
-  uniform sampler2D uGlint;
-
   uniform vec2  uShift;          // tan(tilt) * strength, aspect-corrected
   uniform float uFocus;
   uniform float uOverscan;
   uniform float uLayerDepth[8];  // 0-1, larger = nearer
+` : ""}
 
+${parallax ? `
   // Wall/floor depth model, so the plate can be warped analytically.
   uniform float uWallTop;
   uniform float uWallSeam;
@@ -88,6 +91,7 @@ function buildFragmentShader(order: number[]) {
   uniform float uFloorKneeY;
   uniform float uFloorKnee;
   uniform float uFloorNear;
+` : ""}
 
   uniform mat3  uScreenInv[8];
   uniform vec4  uScreenShape[8]; // x radius, y bulge, z enabled, w mix
@@ -161,6 +165,7 @@ function buildFragmentShader(order: number[]) {
     return mix(c, vid, mask * shape.w);
   }
 
+${parallax ? `
   /* Depth of the wall/floor at a height, measured from the image top. */
   float bgDepth(float yTop) {
     if (yTop < uFloorSeamY) return mix(uWallTop, uWallSeam, yTop / uFloorSeamY);
@@ -173,8 +178,10 @@ function buildFragmentShader(order: number[]) {
     }
     return mix(uFloorKnee, uFloorNear, (t - knee) / (1.0 - knee));
   }
+` : ""}
 
   void main() {
+${parallax ? `
     // Zoom in slightly so shifted reads never leave the texture — this is
     // what keeps the edges seamless against the viewport at full tilt.
     vec2 uv = 0.5 + (vUv - 0.5) * uOverscan;
@@ -189,6 +196,12 @@ function buildFragmentShader(order: number[]) {
 
     // Sets over the top, back to front — each rigid, each with its screen.
     ${order.map(layer).join("\n")}
+` : `
+    // Parallax off: the artwork straight through, screens painted onto it.
+    vec2 uv = vUv;
+    vec3 color = texture2D(uColor, uv).rgb;
+    ${order.map((i) => `color = withScreen(${i}, uv, color);`).join("\n    ")}
+`}
 
     if (uDebug > 0.5) {
       for (int i = 0; i < 8; i++) {
@@ -236,12 +249,38 @@ export default function TvWall({ signedIn }: { signedIn: boolean }) {
   const router = useRouter();
   const [ready, setReady] = useState(false);
 
+  /*
+   * Which composition to show. Portrait viewports get the stacked artwork,
+   * which is a different image with its own sets — so this drives a full
+   * teardown and rebuild rather than a uniform tweak. Chosen after mount so
+   * the server and the first client paint agree.
+   */
+  const [sceneKey, setSceneKey] = useState<"wide" | "tall" | null>(null);
+  useEffect(() => {
+    const pick = () => setSceneKey(sceneKeyFor(window.innerWidth, window.innerHeight));
+    pick();
+    window.addEventListener("resize", pick);
+    window.addEventListener("orientationchange", pick);
+    return () => {
+      window.removeEventListener("resize", pick);
+      window.removeEventListener("orientationchange", pick);
+    };
+  }, []);
+
+  const scene = sceneKey ? SCENES[sceneKey] : null;
+  const tvs: (typeof SCENES)["wide"]["tvs"] = scene ? scene.tvs : [];
+
   const signedInRef = useRef(signedIn);
   signedInRef.current = signedIn;
 
   useEffect(() => {
     const host = hostRef.current;
-    if (!host) return;
+    if (!host || !scene) return;
+
+    const art = scene.art;
+    const sceneTvs = scene.tvs;
+    // The rigid-layer pipeline only has generated masks for the wide artwork.
+    const parallax = PARALLAX_ENABLED && sceneKey === "wide";
 
     let disposed = false;
     const cleanups: (() => void)[] = [];
@@ -274,33 +313,41 @@ export default function TvWall({ signedIn }: { signedIn: boolean }) {
         loader.load(src, resolve, undefined, () => reject(new Error(src)))
       );
 
-    Promise.all([
-      load(ART.color),
-      load(ART.plate),
-      load(ART.alphaA),
-      load(ART.alphaB),
-      load(ART.glint),
-    ]).then(
-      ([colorMap, plateMap, alphaA, alphaB, glintMap]) => {
+    // With the parallax off the plate and masks are never sampled, so they
+    // are not fetched either — that is several MB the page skips. Only the
+    // wide artwork has them generated at all.
+    const layers = art as { plate?: string; alphaA?: string; alphaB?: string };
+    const sources = [art.color, art.glint];
+    if (parallax && layers.plate && layers.alphaA && layers.alphaB) {
+      sources.push(layers.plate, layers.alphaA, layers.alphaB);
+    }
+
+    Promise.all(sources.map(load)).then(
+      ([colorMap, glintMap, plateMap, alphaA, alphaB]) => {
         if (disposed) return;
 
-        for (const t of [colorMap, plateMap, alphaA, alphaB, glintMap]) {
+        const loaded = [colorMap, glintMap, plateMap, alphaA, alphaB].filter(
+          Boolean
+        ) as THREE.Texture[];
+        for (const t of loaded) {
           // Full-resolution sampling (no mip level) keeps the artwork crisp;
-          // bilinear on the masks is what antialiases the moving silhouettes.
+          // bilinear on the masks antialiases the moving silhouettes.
           t.minFilter = THREE.LinearFilter;
           t.magFilter = THREE.LinearFilter;
           t.generateMipmaps = false;
           t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
         }
-        // The mask files carry four independent layers per RGBA texture, so
-        // the alpha channel is data — three.js must not premultiply it away.
-        alphaA.premultiplyAlpha = false;
-        alphaB.premultiplyAlpha = false;
+        if (alphaA && alphaB) {
+          // Four independent layers ride in each RGBA texture, so the alpha
+          // channel is data — three.js must not premultiply it away.
+          alphaA.premultiplyAlpha = false;
+          alphaB.premultiplyAlpha = false;
+        }
 
-        const art = colorMap.image as { width: number; height: number };
-        const imageAspect = art.width / art.height;
+        const img = colorMap.image as { width: number; height: number };
+        const imageAspect = img.width / img.height;
 
-        const scene = new THREE.Scene();
+        const threeScene = new THREE.Scene();
         const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 10);
         camera.position.z = 1;
 
@@ -309,25 +356,42 @@ export default function TvWall({ signedIn }: { signedIn: boolean }) {
           THREE.MathUtils.degToRad(MAX_TILT_Y_DEG)
         );
 
-        // Widest excursion anything can take, so the overscan zoom guarantees
-        // every read stays inside the texture at full tilt.
-        const depths = TVS.map((tv: { depth: number }) => tv.depth / 255);
-        const maxDeviation = Math.max(
-          ...[...depths, SCENE.wallTop / 255, SCENE.floorNear / 255].map((d) =>
-            Math.abs(d - FOCUS_DEPTH)
-          )
+        // The shader's arrays are a fixed 8 slots; a shorter scene pads them
+        // with disabled entries rather than needing a second shader shape.
+        const SLOTS = 8;
+        const depths: number[] = Array.from(
+          { length: SLOTS },
+          (_, i) => (sceneTvs[i]?.depth ?? 0) / 255
         );
-        const marginX = Math.tan(maxTilt.x) * Math.abs(PARALLAX_STRENGTH) * maxDeviation;
-        const marginY =
-          Math.tan(maxTilt.y) * Math.abs(PARALLAX_STRENGTH) * imageAspect * maxDeviation;
-        const overscan = 1 - 2 * Math.max(marginX, marginY);
+
+        let overscan = 1;
+        if (parallax) {
+          // Widest excursion anything can take, so the overscan zoom keeps
+          // every read inside the texture at full tilt.
+          const spread = [
+            ...sceneTvs.map((t: { depth: number }) => t.depth / 255),
+            SCENE.wallTop / 255,
+            SCENE.floorNear / 255,
+          ].map((d) => Math.abs(d - FOCUS_DEPTH));
+          const maxDeviation = Math.max(...spread);
+          const marginX = Math.tan(maxTilt.x) * Math.abs(PARALLAX_STRENGTH) * maxDeviation;
+          const marginY =
+            Math.tan(maxTilt.y) * Math.abs(PARALLAX_STRENGTH) * imageAspect * maxDeviation;
+          overscan = 1 - 2 * Math.max(marginX, marginY);
+        }
 
         // Painter's algorithm: farthest set first.
-        const order = depths.map((_, i) => i).sort((a, b) => depths[a] - depths[b]);
+        const order = sceneTvs
+          .map((_: unknown, i: number) => i)
+          .sort((a: number, b: number) => depths[a] - depths[b]);
 
-        const zonesUv = TVS.map(({ zone: z }: { zone: { x: number; y: number; w: number; h: number } }) =>
-          new THREE.Vector4(z.x, 1 - (z.y + z.h), z.x + z.w, 1 - z.y)
-        );
+        // Degenerate rects for the unused slots so they can never be hit.
+        const zonesUv = Array.from({ length: SLOTS }, (_, i) => {
+          const z = sceneTvs[i]?.zone;
+          return z
+            ? new THREE.Vector4(z.x, 1 - (z.y + z.h), z.x + z.w, 1 - z.y)
+            : new THREE.Vector4(2, 2, 2, 2);
+        });
 
         // ---- live screen textures --------------------------------------
         const screenPainters: (((t: number) => void) | null)[] = [];
@@ -335,12 +399,23 @@ export default function TvWall({ signedIn }: { signedIn: boolean }) {
         const screenInv: THREE.Matrix3[] = [];
         const screenShape: THREE.Vector4[] = [];
 
-        TVS.forEach((tv: (typeof TVS)[number], i: number) => {
-          const s = tv.screen;
-          const quadUv = s.quad.map((p: number[]): [number, number] => [p[0], 1 - p[1]]);
+        const blank = new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1);
+        blank.needsUpdate = true;
+
+        for (let i = 0; i < SLOTS; i++) {
+          const tv = sceneTvs[i];
+          if (!tv) {
+            screenInv.push(new THREE.Matrix3());
+            screenShape.push(new THREE.Vector4(0, 0, 0, 0));
+            screenTextures.push(blank);
+            screenPainters.push(null);
+            continue;
+          }
+          const sc = tv.screen;
+          const quadUv = sc.quad.map((p: number[]): [number, number] => [p[0], 1 - p[1]]);
           screenInv.push(quadHomographyInverse(quadUv));
 
-          const source = s.source as
+          const source = sc.source as
             | { type: "channel"; id: ChannelId }
             | { type: "static" }
             | { type: "video"; src: string };
@@ -370,8 +445,8 @@ export default function TvWall({ signedIn }: { signedIn: boolean }) {
           } else {
             // Backing canvas at the glass's real proportions; small and
             // nearest-filtered on purpose — chunky pixels read as CRT.
-            const pw = (s.quad[1][0] - s.quad[0][0]) * ART.width;
-            const ph = (s.quad[3][1] - s.quad[0][1]) * ART.height;
+            const pw = (sc.quad[1][0] - sc.quad[0][0]) * art.width;
+            const ph = (sc.quad[3][1] - sc.quad[0][1]) * art.height;
             const cw = 96;
             const ch = Math.max(48, Math.round((cw * ph) / pw));
             const canvas = document.createElement("canvas");
@@ -399,26 +474,13 @@ export default function TvWall({ signedIn }: { signedIn: boolean }) {
           }
 
           screenShape.push(
-            new THREE.Vector4(s.radius, s.bulge, 1, source.type === "video" ? 0 : 1)
+            new THREE.Vector4(sc.radius, sc.bulge, 1, source.type === "video" ? 0 : 1)
           );
-        });
+        }
 
         const uniforms: Record<string, THREE.IUniform> = {
-          uPlate: { value: plateMap },
           uColor: { value: colorMap },
-          uAlphaA: { value: alphaA },
-          uAlphaB: { value: alphaB },
           uGlint: { value: glintMap },
-          uShift: { value: new THREE.Vector2() },
-          uFocus: { value: FOCUS_DEPTH },
-          uOverscan: { value: overscan },
-          uLayerDepth: { value: depths },
-          uWallTop: { value: SCENE.wallTop / 255 },
-          uWallSeam: { value: SCENE.wallSeam / 255 },
-          uFloorSeamY: { value: SCENE.floorSeamY },
-          uFloorKneeY: { value: SCENE.floorKneeY },
-          uFloorKnee: { value: SCENE.floorKnee / 255 },
-          uFloorNear: { value: SCENE.floorNear / 255 },
           uScreenInv: { value: screenInv },
           uScreenShape: { value: screenShape },
           uVignette: { value: SCREEN_VIGNETTE },
@@ -429,6 +491,23 @@ export default function TvWall({ signedIn }: { signedIn: boolean }) {
           },
           uHover: { value: -1 },
         };
+        if (parallax) {
+          Object.assign(uniforms, {
+            uPlate: { value: plateMap },
+            uAlphaA: { value: alphaA },
+            uAlphaB: { value: alphaB },
+            uShift: { value: new THREE.Vector2() },
+            uFocus: { value: FOCUS_DEPTH },
+            uOverscan: { value: overscan },
+            uLayerDepth: { value: depths },
+            uWallTop: { value: SCENE.wallTop / 255 },
+            uWallSeam: { value: SCENE.wallSeam / 255 },
+            uFloorSeamY: { value: SCENE.floorSeamY },
+            uFloorKneeY: { value: SCENE.floorKneeY },
+            uFloorKnee: { value: SCENE.floorKnee / 255 },
+            uFloorNear: { value: SCENE.floorNear / 255 },
+          });
+        }
         screenTextures.forEach((t, i) => {
           uniforms[`uScreen${i}`] = { value: t };
         });
@@ -438,16 +517,14 @@ export default function TvWall({ signedIn }: { signedIn: boolean }) {
           new THREE.ShaderMaterial({
             uniforms,
             vertexShader,
-            fragmentShader: buildFragmentShader(order),
+            fragmentShader: buildFragmentShader(order, parallax),
           })
         );
-        scene.add(plane);
+        threeScene.add(plane);
         cleanups.push(() => {
           plane.geometry.dispose();
           (plane.material as THREE.ShaderMaterial).dispose();
-          [colorMap, plateMap, alphaA, alphaB, glintMap, ...screenTextures].forEach((t) =>
-            t.dispose()
-          );
+          [...loaded, ...screenTextures, blank].forEach((t) => t.dispose());
         });
 
         // Cover the viewport like background-size: cover.
@@ -473,7 +550,7 @@ export default function TvWall({ signedIn }: { signedIn: boolean }) {
           // Mirror the shader's overscan so hits land where pixels render.
           const u = 0.5 + (uv.x - 0.5) * overscan;
           const v = 0.5 + (uv.y - 0.5) * overscan;
-          for (let i = 0; i < zonesUv.length; i++) {
+          for (let i = 0; i < sceneTvs.length; i++) {
             const z = zonesUv[i];
             if (u >= z.x && u <= z.z && v >= z.y && v <= z.w) return i;
           }
@@ -490,13 +567,13 @@ export default function TvWall({ signedIn }: { signedIn: boolean }) {
           return hit?.uv ? zoneAt(hit.uv) : -1;
         };
 
-        // ---- pointer -> tilt -------------------------------------------
+        // ---- pointer ---------------------------------------------------
         const mouseTarget = new THREE.Vector2();
         const mouse = new THREE.Vector2();
         const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
         const onMove = (event: PointerEvent) => {
-          if (!reduceMotion) {
+          if (parallax && !reduceMotion) {
             mouseTarget.set(
               THREE.MathUtils.clamp((event.clientX / window.innerWidth) * 2 - 1, -1, 1),
               THREE.MathUtils.clamp(-((event.clientY / window.innerHeight) * 2 - 1), -1, 1)
@@ -512,7 +589,7 @@ export default function TvWall({ signedIn }: { signedIn: boolean }) {
         const onBlur = () => mouseTarget.set(0, 0);
         const onClick = (event: MouseEvent) => {
           const i = pick(event);
-          if (i >= 0) router.push(hrefFor(TVS[i], signedInRef.current));
+          if (i >= 0) router.push(hrefFor(sceneTvs[i], signedInRef.current));
         };
 
         window.addEventListener("pointermove", onMove);
@@ -533,15 +610,17 @@ export default function TvWall({ signedIn }: { signedIn: boolean }) {
           const dt = Math.min(clock.getDelta(), 0.05);
           elapsed += dt;
 
-          // Frame-rate-independent damping — same heavy feel at any Hz.
-          mouse.lerp(mouseTarget, 1 - Math.exp(-EASE * dt));
-          (uniforms.uShift.value as THREE.Vector2).set(
-            Math.tan(mouse.x * maxTilt.x) * PARALLAX_STRENGTH,
-            Math.tan(mouse.y * maxTilt.y) * PARALLAX_STRENGTH * imageAspect
-          );
+          if (parallax) {
+            // Frame-rate-independent damping — same feel at any refresh rate.
+            mouse.lerp(mouseTarget, 1 - Math.exp(-EASE * dt));
+            (uniforms.uShift.value as THREE.Vector2).set(
+              Math.tan(mouse.x * maxTilt.x) * PARALLAX_STRENGTH,
+              Math.tan(mouse.y * maxTilt.y) * PARALLAX_STRENGTH * imageAspect
+            );
+          }
 
           for (const paint of screenPainters) paint?.(elapsed);
-          renderer.render(scene, camera);
+          renderer.render(threeScene, camera);
         });
         cleanups.push(() => renderer.setAnimationLoop(null));
 
@@ -554,11 +633,12 @@ export default function TvWall({ signedIn }: { signedIn: boolean }) {
 
     return () => {
       disposed = true;
+      setReady(false);
       cleanups.forEach((fn) => fn());
     };
-    // The scene binds to DOM + WebGL once; auth changes flow via signedInRef.
+    // Rebuilt whenever the composition changes; auth flows via signedInRef.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [sceneKey]);
 
   return (
     <div
@@ -573,7 +653,7 @@ export default function TvWall({ signedIn }: { signedIn: boolean }) {
     >
       {/* Keyboard & screen-reader path: real links, visible only on focus */}
       <nav aria-label="TV wall">
-        {TVS.map((tv: (typeof TVS)[number]) => (
+        {tvs.map((tv: { name: string; href: unknown }) => (
           <a
             key={tv.name}
             href={hrefFor(tv, signedIn)}

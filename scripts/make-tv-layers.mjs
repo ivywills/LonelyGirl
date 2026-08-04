@@ -46,30 +46,41 @@ const GLINT_BLUR = 8;
 
 /* --------------------------------------------------- raw pixels via sips - */
 
-const bmpPath = path.join(tmpdir(), `lonelygirl-layers-${process.pid}.bmp`);
-execFileSync("sips", ["-s", "format", "bmp", COLOR, "--out", bmpPath], { stdio: "ignore" });
-const bmp = readFileSync(bmpPath);
-rmSync(bmpPath);
-
-const dataOffset = bmp.readUInt32LE(10);
-const W = bmp.readInt32LE(18);
-const rawH = bmp.readInt32LE(22);
-const H = Math.abs(rawH);
-const topDown = rawH < 0;
-const bpp = bmp.readUInt16LE(28) / 8;
-const stride = Math.ceil((W * bpp) / 4) * 4;
-
-const rgb = new Uint8Array(W * H * 3);
-for (let y = 0; y < H; y++) {
-  const row = topDown ? y : H - 1 - y;
-  for (let x = 0; x < W; x++) {
-    const i = dataOffset + row * stride + x * bpp; // BGR(A)
-    const o = (y * W + x) * 3;
-    rgb[o] = bmp[i + 2];
-    rgb[o + 1] = bmp[i + 1];
-    rgb[o + 2] = bmp[i];
+/** Decode a PNG to flat RGB via a temporary BMP. Returns null if missing. */
+function readImage(file) {
+  let bmp;
+  try {
+    const bmpPath = path.join(tmpdir(), `lonelygirl-layers-${process.pid}-${path.basename(file)}.bmp`);
+    execFileSync("sips", ["-s", "format", "bmp", file, "--out", bmpPath], { stdio: "ignore" });
+    bmp = readFileSync(bmpPath);
+    rmSync(bmpPath);
+  } catch {
+    return null;
   }
+  const dataOffset = bmp.readUInt32LE(10);
+  const w = bmp.readInt32LE(18);
+  const rawH = bmp.readInt32LE(22);
+  const h = Math.abs(rawH);
+  const topDown = rawH < 0;
+  const bpp = bmp.readUInt16LE(28) / 8;
+  const stride = Math.ceil((w * bpp) / 4) * 4;
+  const px = new Uint8Array(w * h * 3);
+  for (let y = 0; y < h; y++) {
+    const row = topDown ? y : h - 1 - y;
+    for (let x = 0; x < w; x++) {
+      const i = dataOffset + row * stride + x * bpp; // BGR(A)
+      const o = (y * w + x) * 3;
+      px[o] = bmp[i + 2];
+      px[o + 1] = bmp[i + 1];
+      px[o + 2] = bmp[i];
+    }
+  }
+  return { rgb: px, W: w, H: h };
 }
+
+const source = readImage(COLOR);
+if (!source) throw new Error(`Cannot read ${COLOR}`);
+const { rgb, W, H } = source;
 
 /* ----------------------------------------------------------- segment ---- */
 
@@ -253,84 +264,69 @@ for (let layer = 0; layer < TVS.length; layer++) {
 /* -------------------------------------------------------------- plate --- */
 
 /*
- * Inpaint the wall and floor behind the sets. The background is smooth — a
- * flat wall, one big soft cast shadow, a floor gradient — so diffusing the
- * known pixels inward at quarter resolution and upsampling reconstructs it
- * convincingly, and the result is only ever visible in the sliver a tilt
- * opens up.
+ * Inpaint the wall and floor behind the sets.
+ *
+ * Isotropic diffusion was tried first and looked wrong: averaging in from
+ * every direction at once — including the bright floor — filled each hole
+ * with a pale, perfectly smooth blob, which read as frosted glass the moment
+ * a set slid off it. Instead every unknown pixel is an inverse-distance blend
+ * of the nearest known pixel in each of the four directions. That carries the
+ * wall's gradient and its cast shadow straight across the hole, and a little
+ * grain goes back on top so the fill isn't glassy-smooth against a wall that
+ * has visible texture.
  */
 const plate = new Uint8ClampedArray(W * H * 3);
 {
-  const w = Math.ceil(W / PLATE_SCALE);
-  const h = Math.ceil(H / PLATE_SCALE);
-  const small = [new Float32Array(w * h), new Float32Array(w * h), new Float32Array(w * h)];
-  const known = new Uint8Array(w * h);
+  const FAR = 1e9;
 
-  // Downsample, averaging only the pixels we actually know.
-  const sum = [new Float64Array(w * h), new Float64Array(w * h), new Float64Array(w * h)];
-  const count = new Int32Array(w * h);
-  for (let y = 0; y < H; y++) {
-    for (let x = 0; x < W; x++) {
-      const i = y * W + x;
-      if (!isBackground[i]) continue;
-      const j = ((y / PLATE_SCALE) | 0) * w + ((x / PLATE_SCALE) | 0);
-      const o = i * 3;
-      sum[0][j] += rgb[o];
-      sum[1][j] += rgb[o + 1];
-      sum[2][j] += rgb[o + 2];
-      count[j]++;
-    }
-  }
-  for (let j = 0; j < w * h; j++) {
-    if (count[j] > 0) {
-      known[j] = 1;
-      for (let c = 0; c < 3; c++) small[c][j] = sum[c][j] / count[j];
-    }
-  }
-
-  // Seed the holes with the image mean so diffusion converges quickly.
-  let seedR = 0, seedG = 0, seedB = 0, seedN = 0;
-  for (let j = 0; j < w * h; j++) {
-    if (!known[j]) continue;
-    seedR += small[0][j]; seedG += small[1][j]; seedB += small[2][j]; seedN++;
-  }
-  for (let j = 0; j < w * h; j++) {
-    if (known[j]) continue;
-    small[0][j] = seedR / seedN;
-    small[1][j] = seedG / seedN;
-    small[2][j] = seedB / seedN;
-  }
-
-  // Jacobi diffusion: unknown pixels relax to the average of their
-  // neighbours, so the wall's gradient and the cast shadow flow inward.
-  for (let c = 0; c < 3; c++) {
-    let cur = small[c];
-    let next = new Float32Array(cur);
-    for (let it = 0; it < PLATE_ITERS; it++) {
-      for (let y = 0; y < h; y++) {
-        for (let x = 0; x < w; x++) {
-          const j = y * w + x;
-          if (known[j]) continue;
-          const l = x > 0 ? cur[j - 1] : cur[j];
-          const r = x < w - 1 ? cur[j + 1] : cur[j];
-          const u = y > 0 ? cur[j - w] : cur[j];
-          const d = y < h - 1 ? cur[j + w] : cur[j];
-          next[j] = (l + r + u + d) * 0.25;
+  // Sweep once per direction, each pixel inheriting the nearest known colour
+  // found so far along that axis.
+  function sweep(stepX, stepY) {
+    const dist = new Float32Array(W * H);
+    const col = new Uint8Array(W * H * 3);
+    const xFrom = stepX >= 0 ? 0 : W - 1;
+    const xTo = stepX >= 0 ? W : -1;
+    const xStep = stepX >= 0 ? 1 : -1;
+    const yFrom = stepY >= 0 ? 0 : H - 1;
+    const yTo = stepY >= 0 ? H : -1;
+    const yStep = stepY >= 0 ? 1 : -1;
+    for (let y = yFrom; y !== yTo; y += yStep) {
+      for (let x = xFrom; x !== xTo; x += xStep) {
+        const i = y * W + x;
+        if (isBackground[i]) {
+          dist[i] = 0;
+          col[i * 3] = rgb[i * 3];
+          col[i * 3 + 1] = rgb[i * 3 + 1];
+          col[i * 3 + 2] = rgb[i * 3 + 2];
+          continue;
         }
+        const px = x - stepX;
+        const py = y - stepY;
+        if (px < 0 || px >= W || py < 0 || py >= H) {
+          dist[i] = FAR;
+          continue;
+        }
+        const j = py * W + px;
+        dist[i] = dist[j] + 1;
+        col[i * 3] = col[j * 3];
+        col[i * 3 + 1] = col[j * 3 + 1];
+        col[i * 3 + 2] = col[j * 3 + 2];
       }
-      const swap = cur;
-      cur = next;
-      next = swap;
     }
-    small[c] = cur;
+    return { dist, col };
   }
 
-  // Upsample bilinearly; keep the real pixels wherever we have them so the
-  // wall's own grain and the shadow stay crisp outside the holes.
+  const sides = [sweep(1, 0), sweep(-1, 0), sweep(0, 1), sweep(0, -1)];
+
+  // Cheap deterministic hash noise — repeatable builds, no seeded RNG needed.
+  const grain = (x, y) => {
+    let h = (x * 374761393 + y * 668265263) >>> 0;
+    h = (h ^ (h >>> 13)) >>> 0;
+    h = Math.imul(h, 1274126177) >>> 0;
+    return ((h >>> 8) / 8388608 - 1) * PLATE_GRAIN;
+  };
+
   for (let y = 0; y < H; y++) {
-    const fy = Math.min(h - 1.001, y / PLATE_SCALE);
-    const y0 = fy | 0;
-    const ty = fy - y0;
     for (let x = 0; x < W; x++) {
       const i = y * W + x;
       const o = i * 3;
@@ -340,14 +336,30 @@ const plate = new Uint8ClampedArray(W * H * 3);
         plate[o + 2] = rgb[o + 2];
         continue;
       }
-      const fx = Math.min(w - 1.001, x / PLATE_SCALE);
-      const x0 = fx | 0;
-      const tx = fx - x0;
-      for (let c = 0; c < 3; c++) {
-        const s = small[c];
-        const a = s[y0 * w + x0] * (1 - tx) + s[y0 * w + x0 + 1] * tx;
-        const b = s[(y0 + 1) * w + x0] * (1 - tx) + s[(y0 + 1) * w + x0 + 1] * tx;
-        plate[o + c] = a * (1 - ty) + b * ty;
+      let wsum = 0;
+      let r = 0;
+      let g = 0;
+      let b = 0;
+      for (const side of sides) {
+        const d = side.dist[i];
+        if (d >= FAR) continue;
+        // Squared falloff keeps the nearest wall dominant, so the fill hugs
+        // the gradient it is continuing rather than flattening toward a mean.
+        const w = 1 / ((d + 1) * (d + 1));
+        wsum += w;
+        r += side.col[o] * w;
+        g += side.col[o + 1] * w;
+        b += side.col[o + 2] * w;
+      }
+      const n = grain(x, y);
+      if (wsum > 0) {
+        plate[o] = r / wsum + n;
+        plate[o + 1] = g / wsum + n;
+        plate[o + 2] = b / wsum + n;
+      } else {
+        plate[o] = rgb[o];
+        plate[o + 1] = rgb[o + 1];
+        plate[o + 2] = rgb[o + 2];
       }
     }
   }
@@ -376,19 +388,19 @@ function chunk(type, data) {
   return Buffer.concat([length, body, crc]);
 }
 
-function writePng(dest, rgba) {
+function writePng(dest, rgba, w = W, h = H) {
   const ihdr = Buffer.alloc(13);
-  ihdr.writeUInt32BE(W, 0);
-  ihdr.writeUInt32BE(H, 4);
+  ihdr.writeUInt32BE(w, 0);
+  ihdr.writeUInt32BE(h, 4);
   ihdr[8] = 8;
   ihdr[9] = 6; // truecolour with alpha
-  const raw = Buffer.alloc(H * (W * 4 + 1));
-  for (let y = 0; y < H; y += 1) {
+  const raw = Buffer.alloc(h * (w * 4 + 1));
+  for (let y = 0; y < h; y += 1) {
     Buffer.from(rgba.buffer, rgba.byteOffset).copy(
       raw,
-      y * (W * 4 + 1) + 1,
-      y * W * 4,
-      (y + 1) * W * 4
+      y * (w * 4 + 1) + 1,
+      y * w * 4,
+      (y + 1) * w * 4
     );
   }
   writeFileSync(
@@ -400,7 +412,23 @@ function writePng(dest, rgba) {
       chunk("IEND", Buffer.alloc(0)),
     ])
   );
-  console.log(`[make-tv-layers] wrote ${W}x${H} ${path.relative(root, dest)}`);
+  console.log(`[make-tv-layers] wrote ${w}x${h} ${path.relative(root, dest)}`);
+}
+
+/** Blurred luminance — the artwork's own glass reflections, reused on screens. */
+function writeGlint(px, w, h, dest) {
+  let luma = new Float32Array(w * h);
+  for (let i = 0; i < w * h; i++) {
+    const o = i * 3;
+    luma[i] = 0.299 * px[o] + 0.587 * px[o + 1] + 0.114 * px[o + 2];
+  }
+  for (let i = 0; i < 2; i++) luma = boxBlur(luma, GLINT_BLUR, w, h);
+  const buf = new Uint8ClampedArray(w * h * 4);
+  for (let i = 0; i < w * h; i++) {
+    buf[i * 4] = buf[i * 4 + 1] = buf[i * 4 + 2] = luma[i];
+    buf[i * 4 + 3] = 255;
+  }
+  writePng(dest, buf, w, h);
 }
 
 // Masks: four layers per file, one per channel. Alpha carries a layer too, so
@@ -424,19 +452,14 @@ for (const [file, base] of [["final_tv_alpha_a.png", 0], ["final_tv_alpha_b.png"
   writePng(out("final_tv_plate.png"), buf);
 }
 
+writeGlint(rgb, W, H, out("final_tv_glint.png"));
+
+// The portrait artwork needs no layers while the parallax is off — but its
+// screens still want the photo's own reflections, so give it a glint map too.
 {
-  let luma = new Float32Array(W * H);
-  for (let i = 0; i < W * H; i++) {
-    const o = i * 3;
-    luma[i] = 0.299 * rgb[o] + 0.587 * rgb[o + 1] + 0.114 * rgb[o + 2];
-  }
-  for (let i = 0; i < 2; i++) luma = boxBlur(luma, GLINT_BLUR);
-  const buf = new Uint8ClampedArray(W * H * 4);
-  for (let i = 0; i < W * H; i++) {
-    buf[i * 4] = buf[i * 4 + 1] = buf[i * 4 + 2] = luma[i];
-    buf[i * 4 + 3] = 255;
-  }
-  writePng(out("final_tv_glint.png"), buf);
+  const m = readImage(path.join(root, "public", "final_tv_mobile_color.png"));
+  if (m) writeGlint(m.rgb, m.W, m.H, out("final_tv_mobile_glint.png"));
+  else console.log("[make-tv-layers] no portrait artwork found, skipped its glint");
 }
 
 const covered = owner.reduce((n, o) => n + (o >= 0 ? 1 : 0), 0);
