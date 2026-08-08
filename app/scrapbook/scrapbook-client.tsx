@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { ImagePicker, ROOM_COLORS, roomSurface } from "@/app/chat/rooms-client";
+import PageHeader from "@/app/page-header";
 
 export type ScrapbookRow = {
   id: string;
@@ -132,41 +132,19 @@ export default function ScrapbookClient({
   }
 
   return (
-    <main style={{ maxWidth: 1100, margin: "0 auto", padding: "24px 20px 80px" }}>
-      <header
-        className="page-header"
-        style={{
-          display: "flex",
-          alignItems: "baseline",
-          gap: 14,
-          marginBottom: 6,
-          flexWrap: "wrap",
-        }}
-      >
-        <Link href="/" style={{ color: "var(--muted)", textDecoration: "none" }}>
-          ← home
-        </Link>
-        <h1 style={{ margin: 0, fontSize: 30 }}>Scrapbook</h1>
-        <p style={{ margin: 0, color: "var(--muted)" }}>
-          Bits and pieces worth keeping.
-        </p>
-        <button
-          type="button"
-          onClick={() => setComposing((c) => !c)}
-          style={{
-            marginLeft: "auto",
-            padding: "10px 18px",
-            borderRadius: 999,
-            border: "none",
-            background: "var(--accent)",
-            color: "#fff",
-            fontWeight: 600,
-            cursor: "pointer",
-          }}
-        >
+    <>
+      <PageHeader title="Scrapbook" backHref="/" backLabel="change the channel">
+        <button type="button" className="lg-cta" onClick={() => setComposing((c) => !c)}>
+          <span className="msr" style={{ fontSize: 18 }} aria-hidden>
+            {composing ? "close" : "push_pin"}
+          </span>
           {composing ? "Close" : "Pin something"}
         </button>
-      </header>
+      </PageHeader>
+      <main style={{ maxWidth: 1100, margin: "0 auto", padding: "24px 20px 80px" }}>
+        <p style={{ margin: "0 0 6px", color: "var(--muted)", fontSize: 14 }}>
+          Bits and pieces worth keeping.
+        </p>
 
       {composing && (
         <section
@@ -342,6 +320,7 @@ export default function ScrapbookClient({
           })}
         </div>
       )}
-    </main>
+      </main>
+    </>
   );
 }

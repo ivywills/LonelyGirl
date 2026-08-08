@@ -1,8 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import type { Product } from "@/lib/shopify";
+import PageHeader from "@/app/page-header";
 
 const CATEGORY_META: Record<Product["category"], { label: string; icon: string }> = {
   apparel: { label: "Apparel", icon: "apparel" },
@@ -22,7 +22,6 @@ export default function ShopClient({
   products: Product[];
   configured: boolean;
 }) {
-  const router = useRouter();
   const [activeCat, setActiveCat] = useState<Product["category"] | null>(null);
 
   const cats = useMemo(() => {
@@ -34,26 +33,8 @@ export default function ShopClient({
 
   return (
     <div className="shop-theme">
-      <main style={{ maxWidth: 960, margin: "0 auto", padding: "32px 20px 60px", width: "100%" }}>
-        <header className="page-header" style={{ display: "flex", alignItems: "baseline", gap: 14, marginBottom: 6, flexWrap: "wrap" }}>
-          <h1 style={{ fontSize: 26 }}>Lonely Girl Merch</h1>
-          <button
-            type="button"
-            onClick={() => router.push("/")}
-            style={{
-              fontSize: 13,
-              width: "auto",
-              padding: 0,
-              background: "transparent",
-              border: "none",
-              fontWeight: 400,
-              color: "var(--accent)",
-              cursor: "pointer",
-            }}
-          >
-            change the channel
-          </button>
-        </header>
+      <PageHeader title="Lonely Girl Merch" backHref="/" backLabel="change the channel" />
+      <main style={{ maxWidth: 960, margin: "0 auto", padding: "28px 20px 60px", width: "100%" }}>
         <p style={{ color: "var(--muted)", fontSize: 14, marginBottom: 18 }}>
           Wear the static. Small-batch things from the pile of TVs.
         </p>

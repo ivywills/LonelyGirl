@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Lobster } from "next/font/google";
 import { createClient } from "@/lib/supabase/client";
 import { ROOM_COLORS } from "@/app/chat/rooms-client";
@@ -107,7 +107,6 @@ export default function PlaylistsClient({
   userId: string;
   displayName: string;
 }) {
-  const router = useRouter();
   const [playlists, setPlaylists] = useState<PlaylistRow[]>(rows);
   const [adding, setAdding] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -515,26 +514,27 @@ export default function PlaylistsClient({
         );
       })}
 
-      <button
-        type="button"
-        onClick={() => router.push("/")}
+      {/*
+        The record wall is a full-bleed drag surface, so it gets the header's
+        back button on its own rather than the whole bar — anything more would
+        cover the top row of records.
+      */}
+      <Link
+        href="/"
+        className="lg-icon-btn"
+        title="change the channel"
+        aria-label="change the channel"
         style={{
           position: "absolute",
-          top: 20,
-          left: 24,
+          top: "calc(16px + var(--safe-top))",
+          left: "calc(18px + var(--safe-left))",
           zIndex: 6,
-          fontSize: 13,
-          width: "auto",
-          padding: 0,
-          background: "transparent",
-          border: "none",
-          fontWeight: 400,
-          color: "var(--accent)",
-          cursor: "pointer",
         }}
       >
-        change the channel
-      </button>
+        <span className="msr" style={{ fontSize: 20 }} aria-hidden>
+          arrow_back
+        </span>
+      </Link>
 
       <div
         style={{

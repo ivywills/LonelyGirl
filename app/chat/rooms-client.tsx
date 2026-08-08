@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import PageHeader from "@/app/page-header";
+import { useChatMenu } from "@/app/chat/chat-shell";
 
 export type Room = {
   id: string;
@@ -16,6 +18,25 @@ export type Room = {
   is_private: boolean;
   rules: string;
   welcome_message: string;
+  /** Which rail the room shows up in. Sectionless rooms fall into "More rooms". */
+  section_id: string | null;
+};
+
+/** A rail on the directory — see supabase/room-sections.sql. */
+export type Section = {
+  id: string;
+  name: string;
+  subtitle: string;
+  icon: string;
+  sort_order: number;
+};
+
+/** Latest message in a room. Only readable for rooms you've joined (RLS). */
+export type RoomActivity = {
+  display_name: string;
+  content: string;
+  kind: string;
+  created_at: string;
 };
 
 type JoinRequest = {
@@ -25,6 +46,35 @@ type JoinRequest = {
   status: string;
   chat_rooms: { name: string } | null;
 };
+
+/*
+ * The mood chips map onto the free-form tags rooms already carry, so a chip is
+ * a saved multi-tag filter rather than a second, parallel taxonomy. Each colour
+ * is one of ROOM_COLORS, so roomSurface() gives the chip the pastel in light
+ * mode and the deep tone in dark.
+ */
+export const MOODS: { label: string; icon: string; color: string; tags: string[] }[] = [
+  { label: "anxious", icon: "waves", color: "#7c3aed", tags: ["anxiety", "anxious", "calm", "grounding", "panic"] },
+  { label: "lonely", icon: "favorite", color: "#e11d48", tags: ["lonely", "loneliness", "connection", "friendship"] },
+  { label: "burnt out", icon: "local_fire_department", color: "#ea580c", tags: ["burnout", "tired", "rest", "work"] },
+  { label: "grieving", icon: "favorite_border", color: "#2563eb", tags: ["grief", "loss", "remembering", "bereavement"] },
+  { label: "motivated", icon: "bolt", color: "#ca8a04", tags: ["motivation", "habits", "goals", "growth"] },
+  { label: "new in town", icon: "explore", color: "#16a34a", tags: ["newintown", "toronto", "moving", "meet"] },
+];
+
+/** Material Symbols offered when naming a new section. */
+const SECTION_ICONS = [
+  "volunteer_activism",
+  "self_improvement",
+  "directions_run",
+  "palette",
+  "forum",
+  "favorite",
+  "local_cafe",
+  "nightlight",
+  "diversity_1",
+  "sunny",
+];
 
 export async function uploadRoomImage(
   supabase: ReturnType<typeof createClient>,
@@ -194,35 +244,240 @@ export function isLight(hex: string): boolean {
   }
 }
 
+/*
+ * The design's "38 online" needs presence tracking, which this app doesn't
+ * have. This is the honest version of that line: the room's own last message,
+ * which we can only see for rooms you've joined. Rooms with nothing recent
+ * simply don't show a dot.
+ */
+function activityLabel(iso: string | undefined, now: number): string | null {
+  if (!iso) return null;
+  const mins = (now - new Date(iso).getTime()) / 60000;
+  if (mins < 45) return "active now";
+  if (mins < 60 * 24) return "active today";
+  return null;
+}
+
+function previewOf(m: RoomActivity): string {
+  if (m.kind === "gif") return "sent a GIF";
+  return m.content.replace(/\{\{emoji:[^|{}]+\|([^{}]+)\}\}/g, ":$1:");
+}
+
+function compactCount(n: number): string {
+  return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : `${n}`;
+}
+
+function RoomCard({
+  room,
+  joined,
+  pending,
+  members,
+  activity,
+  now,
+}: {
+  room: Room;
+  joined: boolean;
+  pending: boolean;
+  members: number;
+  activity?: RoomActivity;
+  now: number | null;
+}) {
+  const s = roomSurface(room.bg_color);
+  // now is set after mount so the relative label can't mismatch on hydration
+  const active = now ? activityLabel(activity?.created_at, now) : null;
+
+  return (
+    <Link href={`/chat/${room.id}`} className="lg-room-card">
+      {room.image_url ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={room.image_url}
+          alt=""
+          style={{ width: "100%", height: 106, objectFit: "cover", display: "block" }}
+        />
+      ) : (
+        <div
+          style={{
+            height: 106,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: `repeating-linear-gradient(135deg, color-mix(in srgb, ${s.bg} var(--room-soft-stripe), var(--card)) 0 16px, var(--card) 16px 32px)`,
+          }}
+        >
+          <span
+            style={{
+              font: "600 9px ui-monospace, Menlo, monospace",
+              letterSpacing: "0.12em",
+              color: s.sub,
+              background: s.strip,
+              padding: "4px 9px",
+              borderRadius: 999,
+            }}
+          >
+            ROOM PHOTO
+          </span>
+        </div>
+      )}
+      <div style={{ padding: "13px 15px 15px" }}>
+        <div
+          className="lg-serif"
+          style={{ fontSize: 18, fontWeight: 600, lineHeight: 1.15, display: "flex", alignItems: "center", gap: 6 }}
+        >
+          {/* Two lines, then ellipsis — "Making Friends as an Adult" doesn't fit on one */}
+          <span
+            style={{
+              minWidth: 0,
+              display: "-webkit-box",
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: "vertical",
+              overflow: "hidden",
+            }}
+          >
+            {room.name}
+          </span>
+          {room.is_private && (
+            <span className="msr" style={{ fontSize: 14, color: "var(--muted)" }} title="Private room" aria-label="Private room">
+              lock
+            </span>
+          )}
+        </div>
+        {room.description && (
+          <p style={{ margin: "4px 0 0", fontSize: 12.5, color: "var(--muted)", lineHeight: 1.45 }}>
+            {room.description}
+          </p>
+        )}
+        <div style={{ display: "flex", alignItems: "center", gap: 13, marginTop: 11, flexWrap: "wrap" }}>
+          {active && (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11.5, color: "var(--success)" }}>
+              <span className="lg-online-dot" />
+              {active}
+            </span>
+          )}
+          <span style={{ fontSize: 11.5, color: "var(--muted)" }}>
+            <span className="msr" style={{ fontSize: 13, marginRight: 2 }} aria-hidden>
+              group
+            </span>
+            {compactCount(members)}
+          </span>
+          {joined && (
+            <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: "0.06em", color: "var(--success)" }}>
+              JOINED
+            </span>
+          )}
+          {pending && (
+            <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: "0.06em", color: "var(--muted)" }}>
+              WAITING
+            </span>
+          )}
+        </div>
+        {activity ? (
+          <div
+            style={{
+              marginTop: 11,
+              paddingTop: 10,
+              borderTop: "1px solid var(--border)",
+              fontSize: 11.5,
+              color: "var(--muted)",
+              lineHeight: 1.4,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {activity.kind !== "system" && (
+              <b style={{ color: "var(--accent)", fontWeight: 600 }}>{activity.display_name} </b>
+            )}
+            {previewOf(activity)}
+          </div>
+        ) : room.tags?.length > 0 ? (
+          <div
+            style={{
+              marginTop: 11,
+              paddingTop: 10,
+              borderTop: "1px solid var(--border)",
+              fontSize: 11.5,
+              color: "var(--accent)",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {room.tags.map((t) => `#${t}`).join(" ")}
+          </div>
+        ) : null}
+      </div>
+    </Link>
+  );
+}
+
+const ghostIconBtn: React.CSSProperties = {
+  width: 28,
+  height: 28,
+  padding: 0,
+  borderRadius: "50%",
+  background: "transparent",
+  border: "1px solid var(--border)",
+  color: "var(--muted)",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  cursor: "pointer",
+};
+
+const textBtn: React.CSSProperties = {
+  width: "auto",
+  padding: 0,
+  background: "transparent",
+  border: "none",
+  cursor: "pointer",
+  fontSize: 13,
+  fontWeight: 400,
+};
+
 export default function ChatDirectory({
-  rooms,
+  rooms: initialRooms,
+  sections: initialSections,
   memberRoomIds,
   myRequests,
   userId,
   displayName,
-  popularTags = [],
   memberCounts = {},
+  lastMessages = {},
+  isAdmin = false,
 }: {
   rooms: Room[];
+  sections: Section[];
   memberRoomIds: string[];
   myRequests: JoinRequest[];
   userId: string;
   displayName: string;
-  popularTags?: string[];
   memberCounts?: Record<string, number>;
+  lastMessages?: Record<string, RoomActivity>;
+  /** Rooms and sections are created by admins only — see supabase/admins.sql. */
+  isAdmin?: boolean;
 }) {
   const router = useRouter();
+  const onMenu = useChatMenu();
+
+  // Server data, kept locally so section edits show up without a round trip
+  const [rooms, setRooms] = useState(initialRooms);
+  const [sections, setSections] = useState(initialSections);
+  useEffect(() => setRooms(initialRooms), [initialRooms]);
+  useEffect(() => setSections(initialSections), [initialSections]);
+
   const [query, setQuery] = useState("");
-  const [activeTag, setActiveTag] = useState<string | null>(null);
-  const [tagQuery, setTagQuery] = useState("");
+  const [mood, setMood] = useState<string | null>(null);
   const [scope, setScope] = useState<"all" | "discover" | "joined" | "public" | "private" | "waiting">("all");
   const [remote, setRemote] = useState<Room[] | null>(null);
   const [searching, setSearching] = useState(false);
-  const [creating, setCreating] = useState(false);
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
+  const formRef = useRef<HTMLDivElement>(null);
 
+  const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [tags, setTags] = useState("");
@@ -231,27 +486,36 @@ export default function ChatDirectory({
   const [isPrivate, setIsPrivate] = useState(false);
   const [welcome, setWelcome] = useState("");
   const [rules, setRules] = useState("");
+  const [sectionId, setSectionId] = useState("");
 
-  // Popularity-ordered (popular_tags RPC first), then any extra tags from loaded rooms
-  const allTags = useMemo(() => {
-    const s = new Set<string>(popularTags);
-    rooms.forEach((r) => r.tags?.forEach((t) => s.add(t)));
-    return [...s];
-  }, [rooms, popularTags]);
+  const [addingSection, setAddingSection] = useState(false);
+  const [sectionName, setSectionName] = useState("");
+  const [sectionSubtitle, setSectionSubtitle] = useState("");
+  const [sectionIcon, setSectionIcon] = useState(SECTION_ICONS[0]);
 
-  // With hundreds of tags we only surface the top few until the user filters
-  const visibleTags = useMemo(() => {
-    const q = tagQuery.trim().toLowerCase().replace(/^#/, "");
-    const matches = q ? allTags.filter((t) => t.includes(q)) : allTags;
-    const shown = matches.slice(0, q ? 30 : 12);
-    if (activeTag && !shown.includes(activeTag)) shown.unshift(activeTag);
-    return shown;
-  }, [allTags, tagQuery, activeTag]);
+  // Relative "active now" labels are time-dependent, so they wait for mount
+  const [now, setNow] = useState<number | null>(null);
+  useEffect(() => setNow(Date.now()), []);
+
+  // ⌘K / Ctrl-K jumps to the search box, as the hint chip promises
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        searchRef.current?.focus();
+        searchRef.current?.select();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  const moodTags = useMemo(() => MOODS.find((m) => m.label === mood)?.tags ?? [], [mood]);
 
   // Server-side search across ALL rooms (not just the first page loaded)
   useEffect(() => {
     const q = query.trim().toLowerCase().replace(/[%_,()]/g, "");
-    if (!q && !activeTag) {
+    if (!q && moodTags.length === 0) {
       setRemote(null);
       return;
     }
@@ -271,28 +535,38 @@ export default function ChatDirectory({
         ]);
         found.push(...(byText.data ?? []), ...(byTag.data ?? []));
       }
-      if (activeTag) {
-        const { data } = await sb.from("chat_rooms").select("*").contains("tags", [activeTag]).limit(60);
+      if (moodTags.length > 0) {
+        const { data } = await sb.from("chat_rooms").select("*").overlaps("tags", moodTags).limit(60);
         found.push(...(data ?? []));
       }
+      // Union of the queries; the filter below still ANDs the conditions
       const seen = new Set<string>();
       setRemote(found.filter((r) => (seen.has(r.id) ? false : (seen.add(r.id), true))));
       setSearching(false);
     }, 300);
     return () => clearTimeout(timer);
-  }, [query, activeTag]);
+  }, [query, moodTags]);
 
   const pendingRoomIds = myRequests.filter((r) => r.status === "pending").map((r) => r.room_id);
 
-  const base = remote ?? rooms;
+  /*
+   * Server results widen the already-loaded list rather than replacing it, so
+   * a slow, empty or failed search never blanks rooms that are right here.
+   */
+  const seenIds = new Set<string>();
+  const base = remote
+    ? [...rooms, ...remote].filter((r) => (seenIds.has(r.id) ? false : (seenIds.add(r.id), true)))
+    : rooms;
+  const q = query.trim().toLowerCase();
+  const filtering = q.length > 0 || !!mood || scope !== "all";
+
   const visible = base.filter((r) => {
-    const q = query.trim().toLowerCase();
     const matchesQuery =
       !q ||
       r.name.toLowerCase().includes(q) ||
       r.description?.toLowerCase().includes(q) ||
       r.tags?.some((t) => t.toLowerCase().includes(q));
-    const matchesTag = !activeTag || r.tags?.includes(activeTag);
+    const matchesMood = !mood || r.tags?.some((t) => moodTags.includes(t.toLowerCase()));
     const matchesScope =
       scope === "all" ||
       (scope === "joined" && memberRoomIds.includes(r.id)) ||
@@ -300,8 +574,34 @@ export default function ChatDirectory({
       (scope === "public" && !r.is_private) ||
       (scope === "private" && r.is_private) ||
       (scope === "waiting" && pendingRoomIds.includes(r.id));
-    return matchesQuery && matchesTag && matchesScope;
+    return matchesQuery && matchesMood && matchesScope;
   });
+
+  // One rail per section, in sort order, then everything sectionless
+  const grouped = new Map<string, Room[]>();
+  const loose: Room[] = [];
+  visible.forEach((r) => {
+    if (r.section_id && sections.some((s) => s.id === r.section_id)) {
+      grouped.set(r.section_id, [...(grouped.get(r.section_id) ?? []), r]);
+    } else {
+      loose.push(r);
+    }
+  });
+  const rails: { section: Section | null; rooms: Room[] }[] = [
+    ...[...sections]
+      .sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name))
+      .map((s) => ({ section: s, rooms: grouped.get(s.id) ?? [] })),
+    ...(loose.length > 0 ? [{ section: null, rooms: loose }] : []),
+  ];
+  const shownRails = rails.filter((r) => r.rooms.length > 0 || (!filtering && isAdmin));
+  const nothingMatches = visible.length === 0;
+
+  function openCreate(forSection: string | null) {
+    setSectionId(forSection ?? "");
+    setCreating(true);
+    setError("");
+    requestAnimationFrame(() => formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  }
 
   async function createRoom(e: React.FormEvent) {
     e.preventDefault();
@@ -326,6 +626,7 @@ export default function ChatDirectory({
         is_private: isPrivate,
         welcome_message: welcome.trim(),
         rules: rules.trim(),
+        section_id: sectionId || null,
       })
       .select()
       .single();
@@ -342,341 +643,460 @@ export default function ChatDirectory({
     router.push(`/chat/${data.id}`);
   }
 
+  async function createSection(e: React.FormEvent) {
+    e.preventDefault();
+    if (!sectionName.trim()) return;
+    setBusy(true);
+    setError("");
+    const supabase = createClient();
+    const nextOrder = sections.reduce((max, s) => Math.max(max, s.sort_order), 0) + 10;
+    const { data, error: err } = await supabase
+      .from("room_sections")
+      .insert({
+        name: sectionName.trim(),
+        subtitle: sectionSubtitle.trim(),
+        icon: sectionIcon,
+        sort_order: nextOrder,
+      })
+      .select()
+      .single();
+    setBusy(false);
+    if (err || !data) {
+      setError(err?.message ?? "Could not create that section.");
+      return;
+    }
+    setSections((prev) => [...prev, data as Section]);
+    setSectionName("");
+    setSectionSubtitle("");
+    setSectionIcon(SECTION_ICONS[0]);
+    setAddingSection(false);
+  }
+
+  async function deleteSection(s: Section) {
+    const count = rooms.filter((r) => r.section_id === s.id).length;
+    const warning = count
+      ? ` Its ${count} room${count === 1 ? "" : "s"} stay — ${count === 1 ? "it moves" : "they move"} down to "More rooms".`
+      : "";
+    if (!confirm(`Delete the "${s.name}" section?${warning}`)) return;
+    setError("");
+    const supabase = createClient();
+    const { error: err } = await supabase.from("room_sections").delete().eq("id", s.id);
+    if (err) {
+      setError(err.message);
+      return;
+    }
+    // on delete set null in the database; mirror it locally so the rooms
+    // reappear under "More rooms" straight away
+    setSections((prev) => prev.filter((x) => x.id !== s.id));
+    const unlink = (list: Room[]) => list.map((r) => (r.section_id === s.id ? { ...r, section_id: null } : r));
+    setRooms(unlink);
+    setRemote((prev) => (prev ? unlink(prev) : prev));
+    if (sectionId === s.id) setSectionId("");
+  }
+
   return (
-    <main style={{ maxWidth: 860, margin: "0 auto", padding: "32px 20px 60px", width: "100%" }}>
-      <header className="page-header" style={{ display: "flex", alignItems: "baseline", gap: 14, marginBottom: 6, flexWrap: "wrap" }}>
-        <h1 style={{ fontSize: 26 }}>Chatrooms</h1>
-        <button
-          type="button"
-          onClick={() => router.push("/")}
-          style={{
-            fontSize: 13,
-            width: "auto",
-            padding: 0,
-            background: "transparent",
-            border: "none",
-            fontWeight: 400,
-            color: "var(--accent)",
-            cursor: "pointer",
-          }}
-        >
-          change the channel
-        </button>
-        <button
-          type="button"
-          onClick={() => router.push("/events")}
-          style={{
-            fontSize: 13,
-            width: "auto",
-            padding: 0,
-            background: "transparent",
-            border: "none",
-            fontWeight: 400,
-            color: "var(--accent)",
-            cursor: "pointer",
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 3,
-          }}
-        >
-          <span className="msr" style={{ fontSize: 15 }} aria-hidden>
-            event
-          </span>
-          events
-        </button>
-        <button
-          className="primary"
-          style={{
-            width: "auto",
-            marginLeft: "auto",
-            padding: "8px 18px",
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 6,
-          }}
-          onClick={() => setCreating((v) => !v)}
-        >
-          <span className="msr" style={{ fontSize: 18 }} aria-hidden>
-            {creating ? "close" : "add_circle"}
-          </span>
-          {creating ? "Close" : "Create a room"}
-        </button>
-      </header>
-      <p style={{ color: "var(--muted)", fontSize: 14, marginBottom: 18 }}>
-        Find your people, or start a room of your own.
-      </p>
+    <>
+      <PageHeader
+        title="Chatrooms"
+        backHref="/"
+        backLabel="change the channel"
+        onMenu={onMenu}
+        links={[{ href: "/events", label: "events", icon: "event" }]}
+      >
+        {isAdmin && (
+          <button type="button" className="lg-cta" onClick={() => setCreating((v) => !v)}>
+            <span className="msr" style={{ fontSize: 18 }} aria-hidden>
+              {creating ? "close" : "add_circle"}
+            </span>
+            {creating ? "Close" : "Create a room"}
+          </button>
+        )}
+      </PageHeader>
 
-      {creating && (
-        <form
-          onSubmit={createRoom}
-          className="card on-room"
-          style={{ maxWidth: "none", marginBottom: 24, background: roomSurface(bgColor).bg, transition: "background .3s" }}
-        >
-          <h2 style={{ fontSize: 18, marginBottom: 12 }}>New room</h2>
-          {error && <p className="msg-error">{error}</p>}
-          <label>Name</label>
-          <input value={name} onChange={(e) => setName(e.target.value)} maxLength={60} required />
-          <label>Description</label>
-          <textarea
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            maxLength={300}
-            rows={3}
-            placeholder="What is this room about?"
-          />
-          <label>Tags (comma separated — sports, gaming, a show...)</label>
-          <input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="anime, cozy, late-night" />
-          <label>Room picture</label>
-          <ImagePicker
-            id="create-room-image"
-            imageUrl={imageUrl}
-            uploading={uploading}
-            onFile={async (file) => {
-              setUploading(true);
-              setError("");
-              try {
-                setImageUrl(await uploadRoomImage(createClient(), userId, file));
-              } catch (err) {
-                setError(err instanceof Error ? err.message : "Upload failed.");
-              }
-              setUploading(false);
-            }}
-          />
-          <label>Background colour</label>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
-            {ROOM_COLORS.map((c) => (
-              <button
-                key={c}
-                type="button"
-                onClick={() => setBgColor(c)}
-                aria-label={`Colour ${c}`}
-                style={{
-                  width: 28,
-                  height: 28,
-                  padding: 0,
-                  borderRadius: 8,
-                  background: roomSurface(c).bg,
-                  border: c === bgColor ? "2px solid var(--accent)" : "1px solid var(--border)",
-                }}
-              />
-            ))}
-          </div>
-          <label>Welcome message (sent to people when they join)</label>
-          <input value={welcome} onChange={(e) => setWelcome(e.target.value)} maxLength={200} />
-          <label>Room rules (optional)</label>
-          <input value={rules} onChange={(e) => setRules(e.target.value)} maxLength={500} />
-          <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
+      <main className="lg-page">
+        <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+          <div className="lg-search">
+            <span className="msr" style={{ fontSize: 21, color: "var(--accent)" }} aria-hidden>
+              search
+            </span>
             <input
-              type="checkbox"
-              checked={isPrivate}
-              onChange={(e) => setIsPrivate(e.target.checked)}
-              style={{ width: "auto", margin: 0 }}
+              ref={searchRef}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") setQuery("");
+              }}
+              placeholder="Search rooms or a feeling…"
+              aria-label="Search rooms"
             />
-            Private — people must request to join
-          </label>
-          <button className="primary" disabled={busy || uploading} type="submit">
-            {busy ? "Creating…" : uploading ? "Waiting for upload…" : "Create room"}
-          </button>
-        </form>
-      )}
-
-      <input
-        placeholder="Search all rooms by title, tag or description..."
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        style={{ marginBottom: 10 }}
-      />
-      <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
-        {(
-          [
-            ["all", "All rooms"],
-            ["discover", "Not joined"],
-            ["joined", "Joined"],
-            ["public", "Public"],
-            ["private", "Private"],
-            ...(pendingRoomIds.length > 0
-              ? [["waiting", `Waiting (${pendingRoomIds.length})`]]
-              : []),
-          ] as [typeof scope, string][]
-        ).map(([key, label]) => (
-          <button
-            key={key}
-            onClick={() => setScope(key)}
-            style={{
-              width: "auto",
-              padding: "4px 14px",
-              fontSize: 13,
-              borderRadius: 999,
-              background: scope === key ? "var(--accent)" : "var(--card)",
-              color: scope === key ? "#131316" : "var(--muted)",
-              border: "1px solid var(--border)",
-            }}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-      {allTags.length > 0 && (
-        <div
-          style={{
-            display: "flex",
-            columnGap: 12,
-            rowGap: 6,
-            flexWrap: "wrap",
-            alignItems: "center",
-            marginBottom: 20,
-          }}
-        >
-          <input
-            placeholder="Filter tags..."
-            value={tagQuery}
-            onChange={(e) => setTagQuery(e.target.value)}
-            style={{
-              width: 150,
-              padding: "4px 10px",
-              fontSize: 13,
-              marginBottom: 0,
-              borderRadius: 999,
-            }}
-          />
-          {visibleTags.map((t) => {
-            const active = activeTag === t;
-            return (
-              <button
-                key={t}
-                onClick={() => setActiveTag(active ? null : t)}
-                style={{
-                  width: "auto",
-                  padding: 0,
-                  background: "transparent",
-                  border: "none",
-                  cursor: "pointer",
-                  fontSize: 13,
-                  fontWeight: active ? 700 : 400,
-                  color: active ? "var(--accent)" : "var(--muted)",
-                  textDecoration: active ? "underline" : "none",
-                  textUnderlineOffset: 3,
-                }}
-              >
-                #{t}
+            {query ? (
+              <button type="button" className="lg-kbd" onClick={() => setQuery("")} title="Clear search">
+                clear
               </button>
-            );
-          })}
-          {visibleTags.length === 0 && (
-            <span style={{ fontSize: 12, color: "var(--muted)" }}>no tags match</span>
-          )}
-          {activeTag && (
-            <button
-              onClick={() => setActiveTag(null)}
-              style={{
-                width: "auto",
-                padding: 0,
-                background: "transparent",
-                border: "none",
-                cursor: "pointer",
-                fontSize: 12,
-                color: "var(--muted)",
-                textDecoration: "underline",
-                textUnderlineOffset: 3,
-              }}
-            >
-              clear
-            </button>
-          )}
+            ) : (
+              <span className="lg-kbd">⌘K</span>
+            )}
+          </div>
+          <span
+            className="lg-loc-badge"
+            title="every girl in every room here is right here in Toronto with you."
+          >
+            <span className="msr" style={{ fontSize: 16 }} aria-hidden>
+              location_on
+            </span>
+            Toronto
+          </span>
         </div>
-      )}
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 14 }}>
-        {visible.map((r) => {
-          const s = roomSurface(r.bg_color);
-          const ink = s.ink;
-          const sub = s.sub;
-          const acc = s.acc;
-          return (
-            <Link
-              key={r.id}
-              href={`/chat/${r.id}`}
-              style={{
-                textDecoration: "none",
-                color: ink,
-                background: s.bg,
-                border: "1px solid var(--border)",
-                borderRadius: 14,
-                overflow: "hidden",
-                display: "block",
-              }}
-            >
-              {r.image_url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={r.image_url}
-                  alt=""
-                  style={{ width: "100%", height: 110, objectFit: "cover", display: "block" }}
-                />
-              ) : (
-                <div
+        <div style={{ marginTop: 24 }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 14, flexWrap: "wrap", marginBottom: 10 }}>
+            <p className="lg-serif" style={{ fontSize: 13.5, fontStyle: "italic", color: "var(--muted)", margin: 0 }}>
+              how are you feeling today?
+            </p>
+            <div className="lg-scope-row">
+              {(
+                [
+                  ["all", "all rooms"],
+                  ["joined", "joined"],
+                  ["discover", "not joined"],
+                  ["private", "private"],
+                  ...(pendingRoomIds.length > 0
+                    ? ([["waiting", `waiting (${pendingRoomIds.length})`]] as [typeof scope, string][])
+                    : []),
+                ] as [typeof scope, string][]
+              ).map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setScope(key)}
                   style={{
-                    height: 44,
-                    background: s.tint,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    color: sub,
-                    fontSize: 12,
+                    ...textBtn,
+                    fontSize: 12.5,
+                    fontWeight: scope === key ? 700 : 400,
+                    color: scope === key ? "var(--accent)" : "var(--muted)",
+                    textDecoration: scope === key ? "underline" : "none",
+                    textUnderlineOffset: 3,
                   }}
                 >
-                  no picture yet
-                </div>
-              )}
-              <div style={{ padding: "12px 14px 14px" }}>
-                <p style={{ fontWeight: 600, fontSize: 15 }}>
-                  {r.name}
-                  {r.is_private && (
-                    <span style={{ fontSize: 11, color: sub, marginLeft: 8 }}>
-                      <span className="msr" style={{ fontSize: 12, marginRight: 2 }} aria-hidden>
-                        lock
-                      </span>
-                      PRIVATE
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+            {MOODS.map((m) => {
+              const s = roomSurface(m.color);
+              const active = mood === m.label;
+              return (
+                <button
+                  key={m.label}
+                  type="button"
+                  className="lg-mood-chip"
+                  aria-pressed={active}
+                  onClick={() => setMood(active ? null : m.label)}
+                  style={{
+                    background: `color-mix(in srgb, ${s.bg} var(--room-soft-chip), var(--card))`,
+                    color: s.ink,
+                  }}
+                >
+                  <span className="lg-mood-ic">
+                    <span className="msr" style={{ fontSize: 14, color: s.acc }} aria-hidden>
+                      {m.icon}
                     </span>
-                  )}
-                  {memberRoomIds.includes(r.id) && (
-                    <span style={{ fontSize: 11, color: s.success, marginLeft: 8 }}>
-                      JOINED
-                    </span>
-                  )}
-                  {pendingRoomIds.includes(r.id) && (
-                    <span style={{ fontSize: 11, color: s.warn, marginLeft: 8 }}>
-                      <span className="msr" style={{ fontSize: 12, marginRight: 2 }} aria-hidden>
-                        hourglass_top
-                      </span>
-                      WAITING
-                    </span>
-                  )}
-                </p>
-                {r.description && (
-                  <p style={{ fontSize: 13, color: sub, margin: "4px 0 0" }}>{r.description}</p>
-                )}
-                <p style={{ fontSize: 12, color: sub, margin: "6px 0 0" }}>
-                  <span className="msr" style={{ fontSize: 13, marginRight: 3 }} aria-hidden>
-                    group
                   </span>
-                  {memberCounts[r.id] ?? 0} {(memberCounts[r.id] ?? 0) === 1 ? "member" : "members"}
-                </p>
-                {r.tags?.length > 0 && (
-                  <p style={{ fontSize: 12, color: acc, margin: "8px 0 0" }}>
-                    {r.tags.map((t) => `#${t}`).join(" ")}
+                  {m.label}
+                </button>
+              );
+            })}
+            {mood && (
+              <button
+                type="button"
+                onClick={() => setMood(null)}
+                style={{ ...textBtn, fontSize: 12.5, color: "var(--muted)", textDecoration: "underline", textUnderlineOffset: 3 }}
+              >
+                clear
+              </button>
+            )}
+          </div>
+        </div>
+
+        {error && <p className="msg-error" style={{ marginTop: 16 }}>{error}</p>}
+
+        <div ref={formRef}>
+          {creating && (
+            <form
+              onSubmit={createRoom}
+              className="card on-room"
+              style={{
+                maxWidth: "none",
+                margin: "22px 0 4px",
+                background: roomSurface(bgColor).bg,
+                transition: "background .3s",
+              }}
+            >
+              <h2 style={{ fontSize: 18, marginBottom: 12 }}>New room</h2>
+              <label>Name</label>
+              <input value={name} onChange={(e) => setName(e.target.value)} maxLength={60} required />
+              <label>Description</label>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                maxLength={300}
+                rows={3}
+                placeholder="What is this room about?"
+              />
+              <label>Section (which rail it shows up in)</label>
+              <select
+                value={sectionId}
+                onChange={(e) => setSectionId(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: "10px 12px",
+                  borderRadius: 8,
+                  border: "1px solid var(--room-field-border)",
+                  background: "var(--room-field-bg)",
+                  color: "var(--room-ink)",
+                  fontSize: 15,
+                  marginBottom: 16,
+                  fontFamily: "inherit",
+                }}
+              >
+                <option value="">No section — show under “More rooms”</option>
+                {[...sections]
+                  .sort((a, b) => a.sort_order - b.sort_order)
+                  .map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+              </select>
+              <label>Tags (comma separated — these are what the mood chips match)</label>
+              <input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="anxiety, calm, late-night" />
+              <label>Room picture</label>
+              <ImagePicker
+                id="create-room-image"
+                imageUrl={imageUrl}
+                uploading={uploading}
+                onFile={async (file) => {
+                  setUploading(true);
+                  setError("");
+                  try {
+                    setImageUrl(await uploadRoomImage(createClient(), userId, file));
+                  } catch (err) {
+                    setError(err instanceof Error ? err.message : "Upload failed.");
+                  }
+                  setUploading(false);
+                }}
+              />
+              <label>Background colour</label>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
+                {ROOM_COLORS.map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => setBgColor(c)}
+                    aria-label={`Colour ${c}`}
+                    style={{
+                      width: 28,
+                      height: 28,
+                      padding: 0,
+                      borderRadius: 8,
+                      background: roomSurface(c).bg,
+                      border: c === bgColor ? "2px solid var(--accent)" : "1px solid var(--border)",
+                    }}
+                  />
+                ))}
+              </div>
+              <label>Welcome message (sent to people when they join)</label>
+              <input value={welcome} onChange={(e) => setWelcome(e.target.value)} maxLength={200} />
+              <label>Room rules (optional)</label>
+              <input value={rules} onChange={(e) => setRules(e.target.value)} maxLength={500} />
+              <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
+                <input
+                  type="checkbox"
+                  checked={isPrivate}
+                  onChange={(e) => setIsPrivate(e.target.checked)}
+                  style={{ width: "auto", margin: 0 }}
+                />
+                Private — people must request to join
+              </label>
+              <button className="primary" disabled={busy || uploading} type="submit">
+                {busy ? "Creating…" : uploading ? "Waiting for upload…" : "Create room"}
+              </button>
+            </form>
+          )}
+
+          {addingSection && (
+            <form
+              onSubmit={createSection}
+              className="card"
+              style={{ maxWidth: "none", margin: "22px 0 4px" }}
+            >
+              <h2 style={{ fontSize: 18, marginBottom: 12 }}>New section</h2>
+              <label>Title</label>
+              <input
+                value={sectionName}
+                onChange={(e) => setSectionName(e.target.value)}
+                maxLength={60}
+                placeholder="A soft place to land"
+                required
+              />
+              <label>Subtitle</label>
+              <input
+                value={sectionSubtitle}
+                onChange={(e) => setSectionSubtitle(e.target.value)}
+                maxLength={80}
+                placeholder="support & mental health"
+              />
+              <label>Icon</label>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
+                {SECTION_ICONS.map((ic) => (
+                  <button
+                    key={ic}
+                    type="button"
+                    onClick={() => setSectionIcon(ic)}
+                    aria-label={ic}
+                    aria-pressed={sectionIcon === ic}
+                    style={{
+                      width: 36,
+                      height: 36,
+                      padding: 0,
+                      borderRadius: 10,
+                      background: "var(--bg)",
+                      color: sectionIcon === ic ? "var(--accent)" : "var(--muted)",
+                      border: sectionIcon === ic ? "2px solid var(--accent)" : "1px solid var(--border)",
+                    }}
+                  >
+                    <span className="msr" style={{ fontSize: 18 }} aria-hidden>
+                      {ic}
+                    </span>
+                  </button>
+                ))}
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button className="primary" type="submit" disabled={busy} style={{ width: "auto", padding: "8px 18px" }}>
+                  {busy ? "Adding…" : "Add section"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAddingSection(false)}
+                  style={{ width: "auto", padding: "8px 18px", background: "var(--card)", color: "var(--muted)", border: "1px solid var(--border)" }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          )}
+        </div>
+
+        {shownRails.map((rail, i) => {
+          const s = rail.section;
+          return (
+            <section
+              key={s?.id ?? "loose"}
+              className="lg-rail"
+              style={{ animationDelay: `${Math.min(i, 6) * 90}ms` }}
+            >
+              <div style={{ display: "flex", alignItems: "baseline", gap: 9 }}>
+                <span className="msr" style={{ fontSize: 20, color: "var(--accent)" }} aria-hidden>
+                  {s?.icon ?? "grid_view"}
+                </span>
+                <h3 className="lg-serif" style={{ fontSize: 22, fontWeight: 600, margin: 0 }}>
+                  {s?.name ?? "More rooms"}
+                </h3>
+                {isAdmin && (
+                  <span style={{ marginLeft: "auto", display: "flex", gap: 6, alignSelf: "center" }}>
+                    <button
+                      type="button"
+                      style={ghostIconBtn}
+                      onClick={() => openCreate(s?.id ?? null)}
+                      title={s ? `Add a room to “${s.name}”` : "Add a room with no section"}
+                      aria-label={s ? `Add a room to ${s.name}` : "Add a room with no section"}
+                    >
+                      <span className="msr" style={{ fontSize: 17 }} aria-hidden>
+                        add
+                      </span>
+                    </button>
+                    {s && (
+                      <button
+                        type="button"
+                        style={ghostIconBtn}
+                        onClick={() => deleteSection(s)}
+                        title={`Delete the “${s.name}” section`}
+                        aria-label={`Delete the ${s.name} section`}
+                      >
+                        <span className="msr" style={{ fontSize: 17 }} aria-hidden>
+                          delete
+                        </span>
+                      </button>
+                    )}
+                  </span>
+                )}
+              </div>
+              <p style={{ margin: "2px 0 14px 29px", fontSize: 13, color: "var(--muted)" }}>
+                {s ? s.subtitle : "everything else"}
+              </p>
+              <div className="lg-rail-scroll">
+                {rail.rooms.map((r) => (
+                  <RoomCard
+                    key={r.id}
+                    room={r}
+                    joined={memberRoomIds.includes(r.id)}
+                    pending={pendingRoomIds.includes(r.id)}
+                    members={memberCounts[r.id] ?? 0}
+                    activity={lastMessages[r.id]}
+                    now={now}
+                  />
+                ))}
+                {rail.rooms.length === 0 && (
+                  <p style={{ fontSize: 13, color: "var(--muted)", padding: "18px 2px" }}>
+                    Nothing in here yet — use + to add the first room.
                   </p>
                 )}
               </div>
-            </Link>
+            </section>
           );
         })}
-        {visible.length === 0 && (
-          <p style={{ color: "var(--muted)", fontSize: 14 }}>
-            {searching ? "Searching all rooms…" : "No rooms match — start the first one."}
+
+        {nothingMatches && (
+          <p style={{ color: "var(--muted)", fontSize: 14, marginTop: 30 }}>
+            {searching
+              ? "Searching all rooms…"
+              : filtering
+                ? "No rooms match that — try another feeling, or clear the search."
+                : "No rooms yet."}
           </p>
         )}
-      </div>
-    </main>
+
+        {isAdmin && !addingSection && (
+          <button
+            type="button"
+            onClick={() => {
+              setAddingSection(true);
+              setError("");
+            }}
+            style={{
+              width: "auto",
+              marginTop: 26,
+              padding: "8px 16px",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              fontSize: 13,
+              fontWeight: 600,
+              borderRadius: 999,
+              background: "var(--card)",
+              color: "var(--muted)",
+              border: "1px dashed var(--border)",
+            }}
+          >
+            <span className="msr" style={{ fontSize: 17 }} aria-hidden>
+              add
+            </span>
+            New section
+          </button>
+        )}
+      </main>
+    </>
   );
 }

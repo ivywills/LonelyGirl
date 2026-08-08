@@ -20,7 +20,10 @@
 
 **Approvals — always ask first**
 - I push to Vercel myself via GitHub Desktop so I can review diffs. Commit locally is fine; never `git push` for me.
-- Database changes: give me paste-ready SQL for the Supabase SQL editor with a direct link; don't run migrations against production.
+- **There is only one database.** Local dev and the Vercel deployment both point at Supabase project `xngmeoxwpmtesmmutaeu` — there is no staging copy, so every migration is a production migration and every row you touch is live data.
+- Run them yourself with `psql "$PGURL"`, built from `SUPABASE_DB_URL_DEV` in `.env.local` (gitignored — reference the variable, never print or paste it). The direct host `db.<ref>.supabase.co` is **IPv6-only and unreachable from this Mac**; you must go through the IPv4 pooler at `aws-0-ca-central-1.pooler.supabase.com:5432` with user `postgres.xngmeoxwpmtesmmutaeu`. Port 5432 (session mode), not 6543.
+- Keep the `.sql` file in `supabase/` as the source of truth and write it idempotent so it can be re-run. Snapshot anything you're about to overwrite so there's a rollback, and tell me what you ran and what it reported.
+- Ask me first before `drop`, `delete`, `truncate`, or a rename that loses data — there's no second database to catch a mistake.
 - Never delete or move my files without telling me exactly which files and why, and getting my OK. Same for branches and git history.
 
 ## Project

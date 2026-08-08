@@ -4,6 +4,18 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { ImagePicker, ROOM_COLORS, roomSurface, uploadRoomImage, type Room } from "@/app/chat/rooms-client";
+import PageHeader from "@/app/page-header";
+import { useChatMenu } from "@/app/chat/chat-shell";
+
+/** Small pill buttons in the header bar (pop out, rules, settings, leave). */
+const headerBtn: React.CSSProperties = {
+  width: "auto",
+  padding: "5px 12px",
+  fontSize: 12,
+  background: "var(--bg)",
+  color: "var(--text)",
+  border: "1px solid var(--border)",
+};
 
 type Msg = {
   id: number;
@@ -216,6 +228,7 @@ export default function RoomClient({
   memberCount?: number;
 }) {
   const router = useRouter();
+  const onMenu = useChatMenu();
   const supabase = createClient();
   const [room, setRoom] = useState(initialRoom);
   const [member, setMember] = useState(initiallyMember);
@@ -532,19 +545,64 @@ export default function RoomClient({
   const pinned = pinnedList;
 
   return (
-    <main
-      style={{
-        minHeight: "100vh",
-        background: surface.bg,
-        display: "flex",
-        flexDirection: "column",
-        flex: 1,
-        minWidth: 0,
-        padding: "18px 16px 16px",
-        transition: "background .3s",
-        color: ink,
-      }}
-    >
+    <>
+      <PageHeader
+        title={
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>
+            {room.name}
+            {room.is_private && (
+              <span className="msr" style={{ fontSize: 17, color: "var(--muted)" }} title="Private room" aria-label="Private room">
+                lock
+              </span>
+            )}
+          </span>
+        }
+        backHref="/chat"
+        backLabel="all rooms"
+        onMenu={onMenu}
+      >
+        <button
+          type="button"
+          style={headerBtn}
+          onClick={() =>
+            window.open(window.location.pathname, "_blank", "popup=yes,width=980,height=760")
+          }
+          aria-label="Pop out chat"
+          title="Pop out into its own window"
+        >
+          <span className="msr" style={{ fontSize: 16 }} aria-hidden>
+            open_in_new
+          </span>
+        </button>
+        {room.rules && (
+          <button type="button" style={headerBtn} onClick={() => setShowRules((v) => !v)}>
+            Rules
+          </button>
+        )}
+        {isCreator && (
+          <button type="button" style={headerBtn} onClick={() => setShowSettings((v) => !v)}>
+            Settings{requests.length > 0 ? ` (${requests.length})` : ""}
+          </button>
+        )}
+        {member && !isCreator && (
+          <button type="button" style={headerBtn} onClick={leave} title="Leave this room">
+            Leave
+          </button>
+        )}
+      </PageHeader>
+      <main
+        className="lg-under-topbar"
+        style={{
+          background: surface.bg,
+          display: "flex",
+          flexDirection: "column",
+          flex: 1,
+          minWidth: 0,
+          padding: "18px 16px 16px",
+          transition: "background .3s",
+          color: ink,
+        }}
+      >
       <div
         style={{
           display: "flex",
@@ -556,88 +614,15 @@ export default function RoomClient({
           width: "100%",
         }}
       >
-      <header className="page-header" style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-        <button
-          type="button"
-          onClick={() => router.push("/chat")}
-          style={{
-            fontSize: 13,
-            color: acc,
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 4,
-            width: "auto",
-            padding: 0,
-            background: "transparent",
-            border: "none",
-            fontWeight: 400,
-            cursor: "pointer",
-          }}
-        >
-          <span className="msr" style={{ fontSize: 16 }} aria-hidden>
-            arrow_back
-          </span>
-          all rooms
-        </button>
-        <h1 style={{ fontSize: 20 }}>
-          {room.name}
-          {room.is_private && (
-            <span style={{ fontSize: 11, color: sub, marginLeft: 8 }}>
-              <span className="msr" style={{ fontSize: 13, marginRight: 2 }} aria-hidden>
-                lock
-              </span>
-              PRIVATE
-            </span>
-          )}
-        </h1>
-        <span style={{ fontSize: 13, color: sub }}>{room.description}</span>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
+        {room.description && <span style={{ fontSize: 13, color: sub }}>{room.description}</span>}
         <span style={{ fontSize: 12, color: sub, whiteSpace: "nowrap" }}>
           <span className="msr" style={{ fontSize: 13, marginRight: 3 }} aria-hidden>
             group
           </span>
           {memberCount} {memberCount === 1 ? "member" : "members"}
         </span>
-        <span style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
-          <button
-            type="button"
-            style={{ width: "auto", padding: "5px 12px", fontSize: 12 }}
-            onClick={() =>
-              window.open(window.location.pathname, "_blank", "popup=yes,width=980,height=760")
-            }
-            aria-label="Pop out chat"
-            title="Pop out into its own window"
-          >
-            <span className="msr" style={{ fontSize: 16 }} aria-hidden>
-              open_in_new
-            </span>
-          </button>
-          {room.rules && (
-            <button
-              style={{ width: "auto", padding: "5px 12px", fontSize: 12 }}
-              onClick={() => setShowRules((v) => !v)}
-            >
-              Rules
-            </button>
-          )}
-          {isCreator && (
-            <button
-              style={{ width: "auto", padding: "5px 12px", fontSize: 12 }}
-              onClick={() => setShowSettings((v) => !v)}
-            >
-              Settings{requests.length > 0 ? ` (${requests.length})` : ""}
-            </button>
-          )}
-          {member && !isCreator && (
-            <button
-              style={{ width: "auto", padding: "5px 12px", fontSize: 12 }}
-              onClick={leave}
-              title="Leave this room"
-            >
-              Leave
-            </button>
-          )}
-        </span>
-      </header>
+      </div>
 
       {room.tags?.length > 0 && (
         <p style={{ fontSize: 12, color: acc, margin: "6px 0 0" }}>
@@ -1100,6 +1085,7 @@ export default function RoomClient({
         </>
       )}
       </div>
-    </main>
+      </main>
+    </>
   );
 }

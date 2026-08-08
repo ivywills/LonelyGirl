@@ -1,9 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { ImagePicker, ROOM_COLORS, roomSurface, uploadRoomImage } from "@/app/chat/rooms-client";
+import PageHeader from "@/app/page-header";
 
 export type EventRow = {
   id: string;
@@ -100,7 +100,6 @@ export default function EventsClient({
   userId: string;
   displayName: string;
 }) {
-  const router = useRouter();
   const [attendees, setAttendees] = useState<Attendee[]>(initialAttendees);
   const [query, setQuery] = useState("");
   const [scope, setScope] = useState<"upcoming" | "booked" | "hosting" | "past">("upcoming");
@@ -241,65 +240,21 @@ export default function EventsClient({
   }
 
   return (
-    <main style={{ maxWidth: 860, margin: "0 auto", padding: "32px 20px 60px", width: "100%" }}>
-      <header className="page-header" style={{ display: "flex", alignItems: "baseline", gap: 14, marginBottom: 6, flexWrap: "wrap" }}>
-        <h1 style={{ fontSize: 26 }}>Events</h1>
-        <button
-          type="button"
-          onClick={() => router.push("/")}
-          style={{
-            fontSize: 13,
-            width: "auto",
-            padding: 0,
-            background: "transparent",
-            border: "none",
-            fontWeight: 400,
-            color: "var(--accent)",
-            cursor: "pointer",
-          }}
-        >
-          change the channel
-        </button>
-        <button
-          type="button"
-          onClick={() => router.push("/chat")}
-          style={{
-            fontSize: 13,
-            width: "auto",
-            padding: 0,
-            background: "transparent",
-            border: "none",
-            fontWeight: 400,
-            color: "var(--accent)",
-            cursor: "pointer",
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 3,
-          }}
-        >
-          <span className="msr" style={{ fontSize: 15 }} aria-hidden>
-            forum
-          </span>
-          chatrooms
-        </button>
-        <button
-          className="primary"
-          style={{
-            width: "auto",
-            marginLeft: "auto",
-            padding: "8px 18px",
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 6,
-          }}
-          onClick={() => setCreating((v) => !v)}
-        >
+    <>
+      <PageHeader
+        title="Events"
+        backHref="/"
+        backLabel="change the channel"
+        links={[{ href: "/chat", label: "chatrooms", icon: "forum" }]}
+      >
+        <button type="button" className="lg-cta" onClick={() => setCreating((v) => !v)}>
           <span className="msr" style={{ fontSize: 18 }} aria-hidden>
             {creating ? "close" : "add_circle"}
           </span>
           {creating ? "Close" : "Host an event"}
         </button>
-      </header>
+      </PageHeader>
+      <main style={{ maxWidth: 860, margin: "0 auto", padding: "28px 20px 60px", width: "100%" }}>
       <p style={{ color: "var(--muted)", fontSize: 14, marginBottom: 18 }}>
         <span className="msr" style={{ fontSize: 15, color: WOMEN_PINK, marginRight: 4 }} aria-hidden>
           female
@@ -707,6 +662,7 @@ export default function EventsClient({
           </p>
         )}
       </div>
-    </main>
+      </main>
+    </>
   );
 }

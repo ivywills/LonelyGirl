@@ -1,8 +1,21 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import ChatSidebar, { type SidebarRoom } from "@/app/chat/chat-sidebar";
+
+/*
+ * The narrow-screen sidebar toggle used to be a button floating above the page.
+ * Now that every page starts with a sticky header bar, the toggle lives inside
+ * that bar instead — the chat pages read it from here and hand it to
+ * PageHeader. Outside the chat shell the default no-op means PageHeader simply
+ * renders no menu button.
+ */
+const ChatMenuContext = createContext<(() => void) | null>(null);
+
+export function useChatMenu() {
+  return useContext(ChatMenuContext);
+}
 
 export default function ChatShell({
   rooms,
@@ -19,26 +32,15 @@ export default function ChatShell({
   }, [pathname]);
 
   return (
-    <div className="chat-shell">
-      <div
-        className={`chat-sidebar-backdrop${open ? " open" : ""}`}
-        onClick={() => setOpen(false)}
-      />
-      <ChatSidebar rooms={rooms} className={open ? "open" : ""} />
-      <div className="chat-main">
-        <button
-          type="button"
-          className="chat-hamburger"
-          aria-label="Toggle chat list"
-          onClick={() => setOpen((v) => !v)}
-        >
-          <span className="msr" style={{ fontSize: 18 }} aria-hidden>
-            menu
-          </span>
-          Chats
-        </button>
-        {children}
+    <ChatMenuContext.Provider value={() => setOpen((v) => !v)}>
+      <div className="chat-shell">
+        <div
+          className={`chat-sidebar-backdrop${open ? " open" : ""}`}
+          onClick={() => setOpen(false)}
+        />
+        <ChatSidebar rooms={rooms} className={open ? "open" : ""} />
+        <div className="chat-main">{children}</div>
       </div>
-    </div>
+    </ChatMenuContext.Provider>
   );
 }
