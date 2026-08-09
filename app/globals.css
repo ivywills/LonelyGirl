@@ -386,6 +386,20 @@ a:hover {
 .chat-shell {
   display: flex;
   min-height: 100vh;
+  /*
+   * Chat is the only layout with a sidebar, so its header would otherwise
+   * start 280px in. The bar is lifted out to span the window and the shell is
+   * padded down by its height to make room.
+   */
+  padding-top: var(--lg-topbar-h);
+}
+
+.chat-shell .lg-topbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 45;
 }
 
 .chat-main {
@@ -393,8 +407,12 @@ a:hover {
   min-width: 0;
 }
 
-/* The sidebar toggle sits in the header bar, and only on narrow screens */
-.lg-menu-btn {
+/*
+ * The sidebar toggle sits in the header bar, and only on narrow screens.
+ * Scoped to .lg-topbar so it outranks .lg-icon-btn's inline-flex, which is
+ * declared later in this file.
+ */
+.lg-topbar .lg-menu-btn {
   display: none;
 }
 
@@ -402,8 +420,9 @@ a:hover {
   width: 280px;
   flex-shrink: 0;
   position: sticky;
-  top: 0;
-  height: 100vh;
+  /* Starts below the fixed header rather than sliding under it */
+  top: var(--lg-topbar-h);
+  height: calc(100vh - var(--lg-topbar-h));
   overflow-y: auto;
   border-right: 1px solid var(--border);
   display: flex;
@@ -419,7 +438,9 @@ a:hover {
 @media (max-width: 860px) {
   .chat-sidebar {
     position: fixed;
-    top: 0;
+    /* Drawer opens below the header, which holds its own toggle */
+    top: var(--lg-topbar-h);
+    height: auto;
     left: 0;
     bottom: 0;
     z-index: 40;
@@ -433,7 +454,7 @@ a:hover {
     transform: translateX(0);
   }
 
-  .lg-menu-btn {
+  .lg-topbar .lg-menu-btn {
     display: inline-flex;
   }
 
@@ -477,7 +498,14 @@ a:hover {
   }
 
   .chat-sidebar {
-    height: 100dvh;
+    height: calc(100dvh - var(--lg-topbar-h));
+  }
+
+  /* The drawer is pinned top and bottom, so it sizes itself */
+  @media (max-width: 860px) {
+    .chat-sidebar {
+      height: auto;
+    }
   }
 }
 
@@ -555,8 +583,7 @@ body {
   flex-wrap: wrap;
   background: var(--card);
   border-bottom: 1px solid var(--border);
-  /* Right padding clears the fixed settings gear, which floats over the bar */
-  padding: calc(15px + var(--safe-top)) calc(58px + var(--safe-right)) 15px
+  padding: calc(15px + var(--safe-top)) calc(26px + var(--safe-right)) 15px
     calc(26px + var(--safe-left));
 }
 
@@ -636,11 +663,16 @@ body {
   .lg-topbar {
     gap: 10px;
     padding-left: calc(14px + var(--safe-left));
-    padding-right: calc(52px + var(--safe-right));
+    padding-right: calc(14px + var(--safe-right));
   }
 
   .lg-topbar-title {
     font-size: 21px;
+  }
+
+  /* Header actions that would push the bar onto a second row on a phone */
+  .lg-hide-narrow {
+    display: none;
   }
 }
 
@@ -650,7 +682,8 @@ body {
  * takes on a phone.
  */
 :root {
-  --lg-topbar-h: calc(66px + var(--safe-top));
+  /* 36px of button between 15px of padding, plus the 1px hairline underneath */
+  --lg-topbar-h: calc(67px + var(--safe-top));
 }
 
 .lg-under-topbar {
@@ -730,6 +763,16 @@ body {
   flex: none;
 }
 
+/* The "how are you feeling today?" line, plus the scope filter beside it */
+.lg-mood-head {
+  position: relative;
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
 .lg-scope-row {
   margin-left: auto;
   display: flex;
@@ -737,14 +780,102 @@ body {
   flex-wrap: wrap;
 }
 
+/* Collapses the scope row on a phone — hidden until the filter icon is tapped */
+.lg-filter-btn {
+  display: none;
+  position: relative;
+  width: auto;
+  margin-left: auto;
+  padding: 6px;
+  border-radius: 10px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.lg-filter-btn[aria-expanded="true"] {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* Marks a non-default scope while the row itself is collapsed out of sight */
+.lg-filter-dot {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.lg-mood-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 @media (max-width: 600px) {
-  /* No ⌘K on a phone, and the scope links need the full width to wrap into */
+  /* No ⌘K on a phone */
   .lg-search span.lg-kbd {
     display: none;
   }
 
+  .lg-filter-btn {
+    display: inline-flex;
+  }
+
   .lg-scope-row {
+    display: none;
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    z-index: 20;
     margin-left: 0;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 14px 18px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: 0 8px 30px var(--lift);
+  }
+
+  .lg-scope-row.open {
+    display: flex;
+  }
+
+  /* One scrolling row instead of three wrapped ones */
+  .lg-mood-row {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 8px;
+    scrollbar-width: none;
+  }
+
+  .lg-mood-row::-webkit-scrollbar {
+    display: none;
+  }
+
+  .lg-mood-row > * {
+    flex: none;
+  }
+}
+
+/*
+ * The chip lift is a pointer affordance; on a touch screen it only ever fires
+ * as a stuck :hover after a tap, and inside the scrolling row it would be
+ * clipped by the overflow anyway.
+ */
+@media (hover: none) {
+  .lg-mood-chip:hover {
+    transform: none;
+    box-shadow: none;
   }
 }
 

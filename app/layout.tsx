@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
-import SettingsMenu from "@/app/settings-menu";
 import NativeBridge from "@/app/native-bridge";
 
 export const metadata: Metadata = {
@@ -20,10 +19,9 @@ export const viewport: Viewport = {
   userScalable: false,
   // Draw under the notch/home indicator; globals.css pads with the safe areas.
   viewportFit: "cover",
-  themeColor: [
-    { media: "(prefers-color-scheme: dark)", color: "#1e1e23" },
-    { media: "(prefers-color-scheme: light)", color: "#f4f2ee" },
-  ],
+  // The app is light-only for now, so the browser chrome shouldn't go dark
+  // just because the device prefers it.
+  themeColor: "#f4f2ee",
 };
 
 export default function RootLayout({
@@ -31,8 +29,14 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  /*
+   * data-theme="light" is pinned here rather than chosen at runtime: the
+   * settings gear that used to toggle it is gone for now. The dark palette is
+   * still defined on :root in globals.css, so dropping this attribute (and
+   * rendering SettingsMenu again) brings dark mode straight back.
+   */
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" data-theme="light">
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
@@ -41,16 +45,9 @@ export default function RootLayout({
           href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600;6..72,700&family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,300..600,0..1,-50..200&display=swap"
           rel="stylesheet"
         />
-        {/* Apply the saved theme before first paint to avoid a flash */}
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `try{if(localStorage.getItem("lg-theme")==="light")document.documentElement.dataset.theme="light"}catch(e){}`,
-          }}
-        />
       </head>
       <body>
         <NativeBridge />
-        <SettingsMenu />
         {children}
       </body>
     </html>

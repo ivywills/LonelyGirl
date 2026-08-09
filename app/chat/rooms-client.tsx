@@ -62,6 +62,16 @@ export const MOODS: { label: string; icon: string; color: string; tags: string[]
   { label: "new in town", icon: "explore", color: "#16a34a", tags: ["newintown", "toronto", "moving", "meet"] },
 ];
 
+/** What each scope is called on screen — also what the filter button announces. */
+const SCOPE_LABELS: Record<string, string> = {
+  all: "all rooms",
+  joined: "joined",
+  discover: "not joined",
+  public: "public",
+  private: "private",
+  waiting: "waiting",
+};
+
 /** Material Symbols offered when naming a new section. */
 const SECTION_ICONS = [
   "volunteer_activism",
@@ -469,6 +479,8 @@ export default function ChatDirectory({
   const [query, setQuery] = useState("");
   const [mood, setMood] = useState<string | null>(null);
   const [scope, setScope] = useState<"all" | "discover" | "joined" | "public" | "private" | "waiting">("all");
+  // Phone-only: whether the collapsed scope row is showing
+  const [showScope, setShowScope] = useState(false);
   const [remote, setRemote] = useState<Room[] | null>(null);
   const [searching, setSearching] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -496,6 +508,20 @@ export default function ChatDirectory({
   // Relative "active now" labels are time-dependent, so they wait for mount
   const [now, setNow] = useState<number | null>(null);
   useEffect(() => setNow(Date.now()), []);
+
+  /*
+   * The full placeholder doesn't fit beside the Toronto badge on a phone.
+   * Starts false so the server and the first client render agree, then
+   * settles on mount — same 600px breakpoint the stylesheet uses.
+   */
+  const [narrow, setNarrow] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 600px)");
+    const sync = () => setNarrow(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
 
   // ⌘K / Ctrl-K jumps to the search box, as the hint chip promises
   useEffect(() => {
@@ -701,10 +727,10 @@ export default function ChatDirectory({
         backHref="/"
         backLabel="change the channel"
         onMenu={onMenu}
-        links={[{ href: "/events", label: "events", icon: "event" }]}
       >
+        {/* Hidden on phones — admins still add rooms from the + on each rail */}
         {isAdmin && (
-          <button type="button" className="lg-cta" onClick={() => setCreating((v) => !v)}>
+          <button type="button" className="lg-cta lg-hide-narrow" onClick={() => setCreating((v) => !v)}>
             <span className="msr" style={{ fontSize: 18 }} aria-hidden>
               {creating ? "close" : "add_circle"}
             </span>
@@ -726,7 +752,7 @@ export default function ChatDirectory({
               onKeyDown={(e) => {
                 if (e.key === "Escape") setQuery("");
               }}
-              placeholder="Search rooms or a feeling…"
+              placeholder={narrow ? "Search rooms" : "Search rooms or a feeling…"}
               aria-label="Search rooms"
             />
             {query ? (
@@ -749,17 +775,31 @@ export default function ChatDirectory({
         </div>
 
         <div style={{ marginTop: 24 }}>
-          <div style={{ display: "flex", alignItems: "baseline", gap: 14, flexWrap: "wrap", marginBottom: 10 }}>
+          <div className="lg-mood-head">
             <p className="lg-serif" style={{ fontSize: 13.5, fontStyle: "italic", color: "var(--muted)", margin: 0 }}>
               how are you feeling today?
             </p>
-            <div className="lg-scope-row">
+            {/* Phone-only: the scope row lives behind this until tapped */}
+            <button
+              type="button"
+              className="lg-filter-btn"
+              onClick={() => setShowScope((v) => !v)}
+              aria-expanded={showScope}
+              aria-label={scope === "all" ? "Filter rooms" : `Filter rooms — showing ${SCOPE_LABELS[scope] ?? scope}`}
+              title="Filter rooms"
+            >
+              <span className="msr" style={{ fontSize: 18 }} aria-hidden>
+                tune
+              </span>
+              {scope !== "all" && <span className="lg-filter-dot" aria-hidden />}
+            </button>
+            <div className={`lg-scope-row${showScope ? " open" : ""}`}>
               {(
                 [
-                  ["all", "all rooms"],
-                  ["joined", "joined"],
-                  ["discover", "not joined"],
-                  ["private", "private"],
+                  ["all", SCOPE_LABELS.all],
+                  ["joined", SCOPE_LABELS.joined],
+                  ["discover", SCOPE_LABELS.discover],
+                  ["private", SCOPE_LABELS.private],
                   ...(pendingRoomIds.length > 0
                     ? ([["waiting", `waiting (${pendingRoomIds.length})`]] as [typeof scope, string][])
                     : []),
@@ -768,7 +808,10 @@ export default function ChatDirectory({
                 <button
                   key={key}
                   type="button"
-                  onClick={() => setScope(key)}
+                  onClick={() => {
+                    setScope(key);
+                    setShowScope(false);
+                  }}
                   style={{
                     ...textBtn,
                     fontSize: 12.5,
@@ -783,7 +826,7 @@ export default function ChatDirectory({
               ))}
             </div>
           </div>
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+          <div className="lg-mood-row">
             {MOODS.map((m) => {
               const s = roomSurface(m.color);
               const active = mood === m.label;

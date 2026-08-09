@@ -10,8 +10,10 @@ import Link from "next/link";
  * rooms" text links — the destination still varies per page, the shape no
  * longer does. Its wording lives in the tooltip so the icon can stay silent.
  *
- * Right padding clears the fixed settings gear (app/settings-menu.tsx), which
- * floats over the bar's right end by design.
+ * backHref is always the parent screen, never history — so a room goes up to
+ * the directory and the directory goes home, rather than back into whichever
+ * room you came from. Back leads the bar, with the narrow-screen chats toggle
+ * on its far side.
  */
 export default function PageHeader({
   title,
@@ -33,6 +35,12 @@ export default function PageHeader({
 }) {
   return (
     <header className="lg-topbar" style={style}>
+      <Link href={backHref} className="lg-icon-btn" title={backLabel} aria-label={backLabel}>
+        <span className="msr" style={{ fontSize: 20 }} aria-hidden>
+          arrow_back
+        </span>
+      </Link>
+      {/* Sits on the far side of back, between it and the title */}
       {onMenu && (
         <button
           type="button"
@@ -46,11 +54,6 @@ export default function PageHeader({
           </span>
         </button>
       )}
-      <Link href={backHref} className="lg-icon-btn" title={backLabel} aria-label={backLabel}>
-        <span className="msr" style={{ fontSize: 20 }} aria-hidden>
-          arrow_back
-        </span>
-      </Link>
       <h1 className="lg-topbar-title">{title}</h1>
       {links.map((l) => (
         <Link key={l.href} href={l.href} className="lg-topbar-link">
