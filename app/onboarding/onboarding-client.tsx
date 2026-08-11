@@ -10,9 +10,11 @@ import {
   HOBBIES,
   JOBS,
   STRUGGLES,
+  type Option,
 } from "@/lib/profile-options";
 import { CHIP_COLORS, chip, ONBOARDING_RING, SERIF, T } from "@/lib/profile-theme";
 import { ProfileCardView, Avatar } from "@/app/profile-card";
+import SearchableChips, { inputStyle } from "@/app/chip-select";
 import { saveProfile, type ProfileInput } from "@/app/onboarding/actions";
 import type { ProfileCard } from "@/lib/profile";
 
@@ -56,34 +58,6 @@ function ProgressBar({ step }: { step: number }) {
   );
 }
 
-function ChipGrid({
-  options,
-  selected,
-  onToggle,
-  colors,
-}: {
-  options: { id: string; emoji: string; label: string }[];
-  selected: string[];
-  onToggle: (id: string) => void;
-  colors: readonly [string, string];
-}) {
-  return (
-    <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-      {options.map((o) => (
-        <button
-          key={o.id}
-          type="button"
-          onClick={() => onToggle(o.id)}
-          aria-pressed={selected.includes(o.id)}
-          style={chip(selected.includes(o.id), colors[0], colors[1])}
-        >
-          <span aria-hidden>{o.emoji}</span> {o.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 function StepTitle({ children, sub }: { children: React.ReactNode; sub?: string }) {
   return (
     <>
@@ -92,6 +66,14 @@ function StepTitle({ children, sub }: { children: React.ReactNode; sub?: string 
       </h1>
       {sub ? <p style={{ color: T.muted, fontSize: 14, margin: "0 0 18px" }}>{sub}</p> : null}
     </>
+  );
+}
+
+function Label({ children }: { children: React.ReactNode }) {
+  return (
+    <p style={{ fontSize: 12, color: T.faint, margin: "0 0 8px", fontWeight: 700, letterSpacing: ".06em" }}>
+      {children}
+    </p>
   );
 }
 
@@ -107,7 +89,6 @@ export default function Onboarding({
   const [avatarUrl, setAvatarUrl] = useState(initial?.avatar_url ?? "");
   const [avatarColor, setAvatarColor] = useState(initial?.avatar_color ?? AVATAR_COLORS[0]);
   const [neighborhood, setNeighborhood] = useState(initial?.neighborhood ?? "");
-  const [query, setQuery] = useState("");
   const [age, setAge] = useState(initial?.age_range ?? "");
   const [job, setJob] = useState(initial?.job ?? "");
   const [hobbies, setHobbies] = useState<string[]>(initial?.hobbies ?? []);
@@ -121,10 +102,12 @@ export default function Onboarding({
   const toggle = (list: string[], set: (v: string[]) => void) => (id: string) =>
     set(list.includes(id) ? list.filter((x) => x !== id) : [...list, id]);
 
-  const neighborhoods = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return q ? city.neighborhoods.filter((n) => n.toLowerCase().includes(q)) : city.neighborhoods;
-  }, [city, query]);
+  // Neighbourhoods are plain strings; give them the same Option shape so the
+  // one searchable chip component covers every list in the flow.
+  const neighborhoodOptions: Option[] = useMemo(
+    () => city.neighborhoods.map((n) => ({ id: n, emoji: "", label: n })),
+    [city]
+  );
 
   // Only name and neighborhood block continuing — everything else is optional
   // on purpose, that's the whole reason this is 8 short screens and not a form.
@@ -170,279 +153,294 @@ export default function Onboarding({
   }
 
   return (
-    <main className="wl-sky" style={{ minHeight: "100dvh", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+    /*
+     * The page itself never scrolls. The card is capped to the viewport and
+     * split into three: a fixed head, a scrolling middle, and a pinned footer —
+     * so Continue is reachable on a short phone without hunting for it, and the
+     * lists can grow without ever pushing it off screen.
+     */
+    <main
+      className="wl-sky"
+      style={{
+        minHeight: "100dvh",
+        maxHeight: "100dvh",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 16,
+        paddingTop: "max(16px, env(safe-area-inset-top, 0px))",
+        paddingBottom: "max(16px, env(safe-area-inset-bottom, 0px))",
+        overflow: "hidden",
+      }}
+    >
       <div
         className="wl-card"
         style={{
           width: "100%",
           maxWidth: 460,
+          maxHeight: "100%",
+          display: "flex",
+          flexDirection: "column",
           background: T.paper,
           borderRadius: 22,
-          padding: 26,
+          padding: "clamp(18px, 4.2vw, 26px)",
           boxShadow: ONBOARDING_RING,
           boxSizing: "border-box",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, minHeight: 24 }}>
-          {step > 0 ? (
-            <button
-              type="button"
-              onClick={() => setStep((s) => s - 1)}
-              aria-label="Back"
-              style={{ background: "none", border: "none", cursor: "pointer", fontSize: 19, color: T.muted, padding: 0, lineHeight: 1 }}
-            >
-              ←
-            </button>
-          ) : (
-            <span />
-          )}
-          <span style={{ fontSize: 12, color: T.faint, fontWeight: 600 }}>
-            {step + 1} of {STEPS}
-          </span>
+        {/* ---- fixed head ---- */}
+        <div style={{ flex: "none" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, minHeight: 24 }}>
+            {step > 0 ? (
+              <button
+                type="button"
+                onClick={() => setStep((s) => s - 1)}
+                aria-label="Back"
+                style={{ background: "none", border: "none", cursor: "pointer", fontSize: 19, color: T.muted, padding: 0, lineHeight: 1 }}
+              >
+                ←
+              </button>
+            ) : (
+              <span />
+            )}
+            <span style={{ fontSize: 12, color: T.faint, fontWeight: 600 }}>
+              {step + 1} of {STEPS}
+            </span>
+          </div>
+          <ProgressBar step={step} />
         </div>
 
-        <ProgressBar step={step} />
+        {/* ---- scrolling middle ---- */}
+        <div
+          style={{
+            flex: "1 1 auto",
+            minHeight: 0,
+            overflowY: "auto",
+            overscrollBehavior: "contain",
+            WebkitOverflowScrolling: "touch",
+            // Pull the scrollbar to the card edge without clipping chip shadows.
+            marginRight: -6,
+            paddingRight: 6,
+          }}
+        >
+          {step === 0 && (
+            <>
+              <div style={{ fontSize: 40, marginBottom: 10 }} aria-hidden>💌</div>
+              <StepTitle sub="A few quick things so the girls you meet know who you are. Most of it's optional — skip anything you'd rather not say.">
+                Let&rsquo;s set up your profile
+              </StepTitle>
+            </>
+          )}
 
-        {step === 0 && (
-          <>
-            <div style={{ fontSize: 40, marginBottom: 10 }} aria-hidden>💌</div>
-            <StepTitle sub="A few quick things so the girls you meet know who you are. Most of it's optional — skip anything you'd rather not say.">
-              Let&rsquo;s set up your profile
-            </StepTitle>
-          </>
-        )}
-
-        {step === 1 && (
-          <>
-            <StepTitle sub="Just a first name is fine.">What should we call you?</StepTitle>
-            <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 16 }}>
-              <Avatar name={name} color={avatarColor} url={avatarUrl || undefined} size={72} />
-              <div style={{ flex: 1 }}>
+          {step === 1 && (
+            <>
+              <StepTitle sub="Just a first name is fine.">What should we call you?</StepTitle>
+              <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 16 }}>
+                <Avatar name={name} color={avatarColor} url={avatarUrl || undefined} size={72} />
                 <input
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="First name"
                   maxLength={40}
                   autoFocus
-                  style={{
-                    width: "100%",
-                    boxSizing: "border-box",
-                    padding: "11px 14px",
-                    borderRadius: 11,
-                    border: `1.5px solid ${T.tan}`,
-                    background: T.inputBg,
-                    fontSize: 15,
-                    color: T.ink,
-                  }}
+                  style={{ ...inputStyle, fontSize: 15 }}
                 />
               </div>
-            </div>
 
-            <input
-              id="onb-avatar"
-              type="file"
-              accept="image/*"
-              disabled={uploading}
-              style={{ display: "none" }}
-              onChange={async (e) => {
-                const file = e.target.files?.[0];
-                e.target.value = "";
-                if (!file) return;
-                setUploading(true);
-                setError("");
-                try {
-                  setAvatarUrl(await uploadAvatar(userId, file));
-                } catch (err) {
-                  setError(err instanceof Error ? err.message : "Upload failed.");
-                }
-                setUploading(false);
-              }}
-            />
-            <label
-              htmlFor="onb-avatar"
-              style={{ display: "inline-block", fontSize: 13, color: T.skyInk, cursor: uploading ? "wait" : "pointer", textDecoration: "underline", marginBottom: 14 }}
-            >
-              {uploading ? "Uploading…" : avatarUrl ? "Change photo" : "Add a photo instead"}
-            </label>
+              <input
+                id="onb-avatar"
+                type="file"
+                accept="image/*"
+                disabled={uploading}
+                style={{ display: "none" }}
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = "";
+                  if (!file) return;
+                  setUploading(true);
+                  setError("");
+                  try {
+                    setAvatarUrl(await uploadAvatar(userId, file));
+                  } catch (err) {
+                    setError(err instanceof Error ? err.message : "Upload failed.");
+                  }
+                  setUploading(false);
+                }}
+              />
+              <label
+                htmlFor="onb-avatar"
+                style={{ display: "inline-block", fontSize: 13, color: T.skyInk, cursor: uploading ? "wait" : "pointer", textDecoration: "underline", marginBottom: 14 }}
+              >
+                {uploading ? "Uploading…" : avatarUrl ? "Change photo" : "Add a photo instead"}
+              </label>
 
-            {!avatarUrl && (
-              <>
-                <p style={{ fontSize: 12, color: T.faint, margin: "0 0 8px", fontWeight: 600 }}>or pick a colour</p>
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  {AVATAR_COLORS.map((c) => (
-                    <button
-                      key={c}
-                      type="button"
-                      onClick={() => setAvatarColor(c)}
-                      aria-label={`Colour ${c}`}
-                      style={{
-                        width: 30,
-                        height: 30,
-                        padding: 0,
-                        borderRadius: "50%",
-                        background: c,
-                        cursor: "pointer",
-                        border: avatarColor === c ? `2.5px solid ${T.ink}` : "2.5px solid transparent",
-                      }}
-                    />
-                  ))}
-                </div>
-              </>
-            )}
-          </>
-        )}
-
-        {step === 2 && (
-          <>
-            <StepTitle sub="So you can find girls nearby.">Where in the city?</StepTitle>
-            <div style={{ marginBottom: 12 }}>
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 10px", borderRadius: 999, fontSize: 12, fontWeight: 600, background: T.skyBadge, color: T.skyInk }}>
-                📍 {city.label}
-              </span>
-            </div>
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search neighbourhoods"
-              style={{
-                width: "100%",
-                boxSizing: "border-box",
-                padding: "11px 14px",
-                borderRadius: 11,
-                border: `1.5px solid ${T.tan}`,
-                background: T.inputBg,
-                fontSize: 14,
-                color: T.ink,
-                marginBottom: 14,
-              }}
-            />
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, maxHeight: 260, overflowY: "auto" }}>
-              {neighborhoods.map((n) => (
-                <button
-                  key={n}
-                  type="button"
-                  onClick={() => setNeighborhood(n)}
-                  aria-pressed={neighborhood === n}
-                  style={chip(neighborhood === n, ...CHIP_COLORS.neighborhood)}
-                >
-                  {n}
-                </button>
-              ))}
-              {!neighborhoods.length && (
-                <p style={{ fontSize: 13, color: T.faint, margin: 0 }}>
-                  Nothing matches that — try a shorter search.
-                </p>
+              {!avatarUrl && (
+                <>
+                  <Label>OR PICK A COLOUR</Label>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    {AVATAR_COLORS.map((c) => (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => setAvatarColor(c)}
+                        aria-label={`Colour ${c}`}
+                        style={{
+                          width: 30,
+                          height: 30,
+                          padding: 0,
+                          borderRadius: "50%",
+                          background: c,
+                          cursor: "pointer",
+                          border: avatarColor === c ? `2.5px solid ${T.ink}` : "2.5px solid transparent",
+                        }}
+                      />
+                    ))}
+                  </div>
+                </>
               )}
-            </div>
-          </>
-        )}
+            </>
+          )}
 
-        {step === 3 && (
-          <>
-            <StepTitle sub="Both optional, and you can hide them later.">The basics</StepTitle>
-            <p style={{ fontSize: 12, color: T.faint, margin: "0 0 8px", fontWeight: 600 }}>AGE</p>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 18 }}>
-              {AGE_RANGES.map((a) => (
-                <button key={a} type="button" onClick={() => setAge(age === a ? "" : a)} aria-pressed={age === a} style={chip(age === a, ...CHIP_COLORS.basics)}>
-                  {a}
-                </button>
-              ))}
-            </div>
-            <p style={{ fontSize: 12, color: T.faint, margin: "0 0 8px", fontWeight: 600 }}>WHAT YOU DO</p>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, maxHeight: 200, overflowY: "auto" }}>
-              {JOBS.map((j) => (
-                <button key={j.id} type="button" onClick={() => setJob(job === j.id ? "" : j.id)} aria-pressed={job === j.id} style={chip(job === j.id, ...CHIP_COLORS.basics)}>
-                  <span aria-hidden>{j.emoji}</span> {j.label}
-                </button>
-              ))}
-            </div>
-          </>
-        )}
-
-        {step === 4 && (
-          <>
-            <StepTitle sub="Pick as many as you like.">What are you into?</StepTitle>
-            <div style={{ maxHeight: 340, overflowY: "auto" }}>
-              <ChipGrid options={HOBBIES} selected={hobbies} onToggle={toggle(hobbies, setHobbies)} colors={CHIP_COLORS.hobbies} />
-            </div>
-          </>
-        )}
-
-        {step === 5 && (
-          <>
-            <StepTitle sub="Handy for finding someone to go with.">How do you like to move?</StepTitle>
-            <div style={{ maxHeight: 340, overflowY: "auto" }}>
-              <ChipGrid options={FITNESS} selected={fitness} onToggle={toggle(fitness, setFitness)} colors={CHIP_COLORS.fitness} />
-            </div>
-          </>
-        )}
-
-        {step === 6 && (
-          <>
-            <StepTitle sub="Totally optional, and only ever visible to you. It never shows on your profile — it just helps us understand who's here.">
-              Anything you&rsquo;re going through?
-            </StepTitle>
-            <div style={{ maxHeight: 300, overflowY: "auto" }}>
-              <ChipGrid options={STRUGGLES} selected={struggles} onToggle={toggle(struggles, setStruggles)} colors={CHIP_COLORS.struggles} />
-            </div>
-          </>
-        )}
-
-        {step === 7 && (
-          <>
-            <div style={{ position: "relative" }}>
-              <style>{`
-                @keyframes lgSparkle { 0%,100% { opacity:0; transform:scale(.6) } 50% { opacity:1; transform:scale(1) } }
-              `}</style>
-              {[
-                { top: -6, left: 6, delay: "0s" },
-                { top: 12, right: 10, delay: ".5s" },
-                { top: 40, left: 30, delay: "1s" },
-              ].map((s, i) => (
-                <span
-                  key={i}
-                  aria-hidden
-                  style={{ position: "absolute", fontSize: 15, animation: `lgSparkle 2.4s ${s.delay} infinite`, ...s }}
-                >
-                  ✨
+          {step === 2 && (
+            <>
+              <StepTitle sub="So you can find girls nearby.">Where in the city?</StepTitle>
+              <div style={{ marginBottom: 12 }}>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 10px", borderRadius: 999, fontSize: 12, fontWeight: 600, background: T.skyBadge, color: T.skyInk }}>
+                  📍 {city.label}
                 </span>
-              ))}
-              <StepTitle sub="You can change any of this later from your account.">This is you 💌</StepTitle>
-            </div>
-            <div style={{ display: "flex", justifyContent: "center", padding: "4px 0 6px" }}>
-              <ProfileCardView profile={preview} />
-            </div>
-          </>
-        )}
+              </div>
+              <SearchableChips
+                options={neighborhoodOptions}
+                selected={neighborhood ? [neighborhood] : []}
+                onToggle={(id) => setNeighborhood(neighborhood === id ? "" : id)}
+                colors={CHIP_COLORS.neighborhood}
+                placeholder="Search neighbourhoods"
+              />
+            </>
+          )}
 
-        {error ? (
-          <p style={{ color: "#b3261e", fontSize: 13, margin: "14px 0 0" }} role="alert">
-            {error}
-          </p>
-        ) : null}
+          {step === 3 && (
+            <>
+              <StepTitle sub="Both optional, and you can hide them later.">The basics</StepTitle>
+              <Label>AGE</Label>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 20 }}>
+                {AGE_RANGES.map((a) => (
+                  <button key={a} type="button" onClick={() => setAge(age === a ? "" : a)} aria-pressed={age === a} style={chip(age === a, ...CHIP_COLORS.basics)}>
+                    {a}
+                  </button>
+                ))}
+              </div>
+              <Label>WHAT YOU DO</Label>
+              <SearchableChips
+                options={JOBS}
+                selected={job ? [job] : []}
+                onToggle={(id) => setJob(job === id ? "" : id)}
+                colors={CHIP_COLORS.basics}
+                placeholder="Search job fields"
+              />
+            </>
+          )}
 
-        <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 22 }}>
-          <button
-            className="primary"
-            type="button"
-            disabled={blocked || pending}
-            onClick={() => (step === STEPS - 1 ? finish() : setStep((s) => s + 1))}
-            style={{ flex: 1 }}
-          >
-            {step === 0 ? "Let's go" : step === STEPS - 1 ? (pending ? "Saving…" : "Enter LonelyGirl") : "Continue"}
-          </button>
-          {step === 6 ? (
-            <button
-              type="button"
-              onClick={() => {
-                setStruggles([]);
-                setStep((s) => s + 1);
-              }}
-              style={{ background: "none", border: "none", color: T.muted, fontSize: 13, cursor: "pointer", textDecoration: "underline", padding: 0 }}
-            >
-              Skip this one
-            </button>
+          {step === 4 && (
+            <>
+              <StepTitle sub="Pick as many as you like.">What are you into?</StepTitle>
+              <SearchableChips
+                options={HOBBIES}
+                selected={hobbies}
+                onToggle={toggle(hobbies, setHobbies)}
+                colors={CHIP_COLORS.hobbies}
+                placeholder="Search interests"
+              />
+            </>
+          )}
+
+          {step === 5 && (
+            <>
+              <StepTitle sub="Handy for finding someone to go with.">How do you like to move?</StepTitle>
+              <SearchableChips
+                options={FITNESS}
+                selected={fitness}
+                onToggle={toggle(fitness, setFitness)}
+                colors={CHIP_COLORS.fitness}
+                placeholder="Search activities"
+              />
+            </>
+          )}
+
+          {step === 6 && (
+            <>
+              <StepTitle sub="Totally optional, and only ever visible to you. It never shows on your profile — it just helps us understand who's here.">
+                Anything you&rsquo;re going through?
+              </StepTitle>
+              <SearchableChips
+                options={STRUGGLES}
+                selected={struggles}
+                onToggle={toggle(struggles, setStruggles)}
+                colors={CHIP_COLORS.struggles}
+                placeholder="Search"
+              />
+            </>
+          )}
+
+          {step === 7 && (
+            <>
+              <div style={{ position: "relative" }}>
+                <style>{`
+                  @keyframes lgSparkle { 0%,100% { opacity:0; transform:scale(.6) } 50% { opacity:1; transform:scale(1) } }
+                `}</style>
+                {[
+                  { top: -6, left: 6, delay: "0s" },
+                  { top: 12, right: 10, delay: ".5s" },
+                  { top: 40, left: 30, delay: "1s" },
+                ].map((s, i) => (
+                  <span
+                    key={i}
+                    aria-hidden
+                    style={{ position: "absolute", fontSize: 15, animation: `lgSparkle 2.4s ${s.delay} infinite`, ...s }}
+                  >
+                    ✨
+                  </span>
+                ))}
+                <StepTitle sub="You can change any of this later from your account.">This is you 💌</StepTitle>
+              </div>
+              <div style={{ display: "flex", justifyContent: "center", padding: "4px 0 6px" }}>
+                <ProfileCardView profile={preview} />
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* ---- pinned footer ---- */}
+        <div style={{ flex: "none" }}>
+          {error ? (
+            <p style={{ color: "#b3261e", fontSize: 13, margin: "14px 0 0" }} role="alert">
+              {error}
+            </p>
           ) : null}
+
+          <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 18, paddingTop: 4 }}>
+            <button
+              className="primary"
+              type="button"
+              disabled={blocked || pending}
+              onClick={() => (step === STEPS - 1 ? finish() : setStep((s) => s + 1))}
+              style={{ flex: 1 }}
+            >
+              {step === 0 ? "Let's go" : step === STEPS - 1 ? (pending ? "Saving…" : "Enter LonelyGirl") : "Continue"}
+            </button>
+            {step === 6 ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setStruggles([]);
+                  setStep((s) => s + 1);
+                }}
+                style={{ background: "none", border: "none", color: T.muted, fontSize: 13, cursor: "pointer", textDecoration: "underline", padding: 0, whiteSpace: "nowrap" }}
+              >
+                Skip this one
+              </button>
+            ) : null}
+          </div>
         </div>
       </div>
     </main>

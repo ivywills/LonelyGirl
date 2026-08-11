@@ -1,21 +1,12 @@
-"use client";
+import Link from "next/link";
 
-import { useRouter } from "next/navigation";
-
-const navButtonStyle: React.CSSProperties = {
-  fontSize: 14,
-  width: "auto",
-  padding: 0,
-  background: "transparent",
-  border: "none",
-  fontWeight: 400,
-  color: "var(--accent)",
-  cursor: "pointer",
-};
-
+/*
+ * The only account controls on the home screen. They use the same .lg-cta
+ * family as every other account surface — signed out, "Sign up" is the solid
+ * one and "Log in" sits back as a ghost, so there's a clear primary action
+ * rather than two identical accent-coloured text links.
+ */
 export default function HomeNav({ signedIn }: { signedIn: boolean }) {
-  const router = useRouter();
-
   return (
     <header
       style={{
@@ -23,23 +14,26 @@ export default function HomeNav({ signedIn }: { signedIn: boolean }) {
         maxWidth: 680,
         display: "flex",
         justifyContent: "flex-end",
-        gap: 16,
-        fontSize: 14,
+        alignItems: "center",
+        gap: 10,
         paddingRight: "max(16px, var(--safe-right))",
       }}
     >
       {signedIn ? (
-        <button type="button" style={navButtonStyle} onClick={() => router.push("/account")}>
+        <Link className="lg-cta ghost" href="/account">
+          <span className="msr" style={{ fontSize: 16 }} aria-hidden>
+            person
+          </span>
           Account
-        </button>
+        </Link>
       ) : (
         <>
-          <button type="button" style={navButtonStyle} onClick={() => router.push("/login")}>
+          <Link className="lg-cta ghost" href="/login">
             Log in
-          </button>
-          <button type="button" style={navButtonStyle} onClick={() => router.push("/signup")}>
+          </Link>
+          <Link className="lg-cta" href="/signup">
             Sign up
-          </button>
+          </Link>
         </>
       )}
     </header>

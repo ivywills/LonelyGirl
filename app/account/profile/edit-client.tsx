@@ -1,6 +1,8 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
 import PageHeader from "@/app/page-header";
 import {
   AGE_RANGES,
@@ -10,9 +12,11 @@ import {
   HOBBIES,
   JOBS,
   STRUGGLES,
+  type Option,
 } from "@/lib/profile-options";
-import { CHIP_COLORS, chip, ONBOARDING_RING, SERIF, T } from "@/lib/profile-theme";
+import { CHIP_COLORS, chip, ONBOARDING_RING, T } from "@/lib/profile-theme";
 import { Avatar, ProfileCardView } from "@/app/profile-card";
+import SearchableChips, { inputStyle } from "@/app/chip-select";
 import { saveProfile, type ProfileInput } from "@/app/onboarding/actions";
 import type { OwnProfile, ProfileCard } from "@/lib/profile";
 
@@ -30,19 +34,38 @@ function Section({ label, hint, children }: { label: string; hint?: string; chil
 
 function Toggle({ on, onChange, label }: { on: boolean; onChange: (v: boolean) => void; label: string }) {
   return (
-    <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 13, color: T.ink, cursor: "pointer" }}>
-      <input type="checkbox" checked={on} onChange={(e) => onChange(e.target.checked)} style={{ accentColor: T.butterDeep, width: 16, height: 16 }} />
+    // marginBottom: 0 overrides the global `label` rule, which adds 6px and
+    // would nudge the row against whatever follows it.
+    <label
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 8,
+        fontSize: 13,
+        lineHeight: 1.2,
+        color: T.ink,
+        cursor: "pointer",
+        marginTop: 12,
+        marginBottom: 0,
+      }}
+    >
+      <input
+        type="checkbox"
+        checked={on}
+        onChange={(e) => onChange(e.target.checked)}
+        style={{ accentColor: T.butterDeep, width: 16, height: 16, display: "block" }}
+      />
       {label}
     </label>
   );
 }
 
 export default function EditProfile({ profile }: { profile: OwnProfile }) {
+  const router = useRouter();
   const [name, setName] = useState(profile.name);
   const [avatarUrl] = useState(profile.avatar_url);
   const [avatarColor, setAvatarColor] = useState(profile.avatar_color);
   const [neighborhood, setNeighborhood] = useState(profile.neighborhood);
-  const [query, setQuery] = useState("");
   const [age, setAge] = useState(profile.age_range);
   const [job, setJob] = useState(profile.job);
   const [hobbies, setHobbies] = useState<string[]>(profile.hobbies ?? []);
@@ -58,10 +81,10 @@ export default function EditProfile({ profile }: { profile: OwnProfile }) {
   const toggle = (list: string[], set: (v: string[]) => void) => (id: string) =>
     set(list.includes(id) ? list.filter((x) => x !== id) : [...list, id]);
 
-  const neighborhoods = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return q ? city.neighborhoods.filter((n) => n.toLowerCase().includes(q)) : city.neighborhoods;
-  }, [city, query]);
+  const neighborhoodOptions: Option[] = useMemo(
+    () => city.neighborhoods.map((n) => ({ id: n, emoji: "", label: n })),
+    [city]
+  );
 
   const preview: ProfileCard = {
     user_id: profile.user_id,
@@ -97,16 +120,23 @@ export default function EditProfile({ profile }: { profile: OwnProfile }) {
       const res = await saveProfile(input);
       if (!res.ok) setError(res.error);
       else {
+        // Flash "Saved" just long enough to register, then leave — saving is
+        // the end of the task, not a state to sit in.
         setSaved(true);
-        setTimeout(() => setSaved(false), 1800);
+        setTimeout(() => router.push("/"), 650);
       }
     });
   }
 
   return (
     <>
-      <PageHeader title="Edit profile" backHref="/account" backLabel="back to your account" />
-      <main style={{ padding: "20px 16px 110px", display: "flex", justifyContent: "center" }}>
+      <PageHeader title="Profile" backHref="/account" backLabel="back to your account" />
+      {/*
+        One long form with a single page scroll. The lists used to sit in five
+        nested scroll boxes, which meant a scroll wheel over a chip grid moved
+        the inner list instead of the page — search replaces the need for them.
+      */}
+      <main style={{ padding: "20px 16px 120px", display: "flex", justifyContent: "center" }}>
         <div
           className="wl-card"
           style={{
@@ -114,11 +144,40 @@ export default function EditProfile({ profile }: { profile: OwnProfile }) {
             maxWidth: 520,
             background: T.paper,
             borderRadius: 22,
-            padding: 26,
+            padding: "clamp(18px, 4.2vw, 26px)",
             boxShadow: ONBOARDING_RING,
             boxSizing: "border-box",
           }}
         >
+          {/*
+            The sticky header's back arrow is easy to miss against the dark bar,
+            and the pastel card reads as the whole screen. This gives the card
+            its own way out, in the corner people already look for one.
+          */}
+          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: -6, marginBottom: 2 }}>
+            <Link
+              href="/account"
+              aria-label="Close profile"
+              title="Close"
+              style={{
+                width: 30,
+                height: 30,
+                borderRadius: "50%",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                border: `1.5px solid ${T.tan2}`,
+                color: T.muted,
+                fontSize: 16,
+                lineHeight: 1,
+                textDecoration: "none",
+                flex: "none",
+              }}
+            >
+              ×
+            </Link>
+          </div>
+
           <Section label="Name">
             <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
               <Avatar name={name} color={avatarColor} url={avatarUrl || undefined} size={64} />
@@ -127,7 +186,7 @@ export default function EditProfile({ profile }: { profile: OwnProfile }) {
                 onChange={(e) => setName(e.target.value)}
                 maxLength={40}
                 placeholder="First name"
-                style={{ flex: 1, boxSizing: "border-box", padding: "11px 14px", borderRadius: 11, border: `1.5px solid ${T.tan}`, background: T.inputBg, fontSize: 15, color: T.ink }}
+                style={{ ...inputStyle, fontSize: 15 }}
               />
             </div>
             {!avatarUrl && (
@@ -141,23 +200,17 @@ export default function EditProfile({ profile }: { profile: OwnProfile }) {
           </Section>
 
           <Section label="Neighbourhood">
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
+            <SearchableChips
+              options={neighborhoodOptions}
+              selected={neighborhood ? [neighborhood] : []}
+              onToggle={(id) => setNeighborhood(neighborhood === id ? "" : id)}
+              colors={CHIP_COLORS.neighborhood}
               placeholder={`Search ${city.label} neighbourhoods`}
-              style={{ width: "100%", boxSizing: "border-box", padding: "10px 14px", borderRadius: 11, border: `1.5px solid ${T.tan}`, background: T.inputBg, fontSize: 14, color: T.ink, marginBottom: 12 }}
             />
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, maxHeight: 190, overflowY: "auto" }}>
-              {neighborhoods.map((n) => (
-                <button key={n} type="button" onClick={() => setNeighborhood(n)} aria-pressed={neighborhood === n} style={chip(neighborhood === n, ...CHIP_COLORS.neighborhood)}>
-                  {n}
-                </button>
-              ))}
-            </div>
           </Section>
 
           <Section label="Age" hint="Shown on your card only if you leave this ticked.">
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
               {AGE_RANGES.map((a) => (
                 <button key={a} type="button" onClick={() => setAge(age === a ? "" : a)} aria-pressed={age === a} style={chip(age === a, ...CHIP_COLORS.basics)}>
                   {a}
@@ -168,44 +221,44 @@ export default function EditProfile({ profile }: { profile: OwnProfile }) {
           </Section>
 
           <Section label="What you do" hint="Shown on your card only if you leave this ticked.">
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, maxHeight: 170, overflowY: "auto", marginBottom: 10 }}>
-              {JOBS.map((j) => (
-                <button key={j.id} type="button" onClick={() => setJob(job === j.id ? "" : j.id)} aria-pressed={job === j.id} style={chip(job === j.id, ...CHIP_COLORS.basics)}>
-                  <span aria-hidden>{j.emoji}</span> {j.label}
-                </button>
-              ))}
-            </div>
+            <SearchableChips
+              options={JOBS}
+              selected={job ? [job] : []}
+              onToggle={(id) => setJob(job === id ? "" : id)}
+              colors={CHIP_COLORS.basics}
+              placeholder="Search job fields"
+            />
             <Toggle on={showJob} onChange={setShowJob} label="Show what I do on my profile" />
           </Section>
 
           <Section label="Into">
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, maxHeight: 220, overflowY: "auto" }}>
-              {HOBBIES.map((h) => (
-                <button key={h.id} type="button" onClick={() => toggle(hobbies, setHobbies)(h.id)} aria-pressed={hobbies.includes(h.id)} style={chip(hobbies.includes(h.id), ...CHIP_COLORS.hobbies)}>
-                  <span aria-hidden>{h.emoji}</span> {h.label}
-                </button>
-              ))}
-            </div>
+            <SearchableChips
+              options={HOBBIES}
+              selected={hobbies}
+              onToggle={toggle(hobbies, setHobbies)}
+              colors={CHIP_COLORS.hobbies}
+              placeholder="Search interests"
+            />
           </Section>
 
           <Section label="Movement">
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, maxHeight: 220, overflowY: "auto" }}>
-              {FITNESS.map((f) => (
-                <button key={f.id} type="button" onClick={() => toggle(fitness, setFitness)(f.id)} aria-pressed={fitness.includes(f.id)} style={chip(fitness.includes(f.id), ...CHIP_COLORS.fitness)}>
-                  <span aria-hidden>{f.emoji}</span> {f.label}
-                </button>
-              ))}
-            </div>
+            <SearchableChips
+              options={FITNESS}
+              selected={fitness}
+              onToggle={toggle(fitness, setFitness)}
+              colors={CHIP_COLORS.fitness}
+              placeholder="Search activities"
+            />
           </Section>
 
           <Section label="Going through" hint="Only you can see this — it never appears on your profile card.">
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, maxHeight: 220, overflowY: "auto" }}>
-              {STRUGGLES.map((s) => (
-                <button key={s.id} type="button" onClick={() => toggle(struggles, setStruggles)(s.id)} aria-pressed={struggles.includes(s.id)} style={chip(struggles.includes(s.id), ...CHIP_COLORS.struggles)}>
-                  <span aria-hidden>{s.emoji}</span> {s.label}
-                </button>
-              ))}
-            </div>
+            <SearchableChips
+              options={STRUGGLES}
+              selected={struggles}
+              onToggle={toggle(struggles, setStruggles)}
+              colors={CHIP_COLORS.struggles}
+              placeholder="Search"
+            />
           </Section>
 
           <div style={{ height: 1, background: T.tan2, margin: "4px 0 20px" }} />

@@ -193,6 +193,22 @@ textarea {
   font-family: inherit;
 }
 
+/*
+ * The rule above is for text fields. Checkboxes and radios were picking up its
+ * padding and its 16px bottom margin, which pushed the box off-centre against
+ * its own label text. Reset them back to native controls.
+ */
+input[type="checkbox"],
+input[type="radio"] {
+  width: auto;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  border-radius: 0;
+  flex: none;
+}
+
 textarea {
   resize: vertical;
 }
@@ -657,6 +673,107 @@ body {
 .lg-cta:hover {
   background: var(--accent-hover);
   text-decoration: none;
+}
+
+/*
+ * Account surfaces. Everything that answers "who are you" — the home nav, the
+ * account card, sign out — uses this one family, so the same action stops
+ * being a bare text link in one place and a full-width purple button in
+ * another. The variants are hierarchy only: solid = the thing to do here,
+ * ghost = available, quiet = present but not competing for the eye.
+ */
+.lg-cta.ghost {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
+.lg-cta.ghost:hover {
+  background: color-mix(in srgb, var(--accent) 12%, var(--card));
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+}
+
+:root[data-theme="light"] .lg-cta.ghost {
+  color: var(--text);
+}
+
+/* Signing out shouldn't be the loudest control on the page. */
+.lg-cta.quiet {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.lg-cta.quiet:hover {
+  background: color-mix(in srgb, var(--error) 10%, var(--card));
+  border-color: color-mix(in srgb, var(--error) 40%, var(--border));
+  color: var(--text);
+}
+
+:root[data-theme="light"] .lg-cta.quiet {
+  color: var(--muted);
+}
+
+/* Identity header on the account card: avatar + name + neighbourhood. */
+.lg-acct-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 22px;
+}
+
+.lg-acct-name,
+.card h1.lg-acct-name {
+  font-family: "Newsreader", Georgia, serif;
+  font-size: 21px;
+  font-weight: 600;
+  line-height: 1.2;
+  margin-bottom: 0;
+  overflow-wrap: anywhere;
+}
+
+.lg-acct-where {
+  color: var(--muted);
+  font-size: 13px;
+  margin-top: 3px;
+}
+
+/* Label/value rows — replaces the old <strong>Email:</strong> run-on block. */
+.lg-acct-rows {
+  border-top: 1px solid var(--border);
+  margin: 0 0 22px;
+}
+
+.lg-acct-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 11px 1px;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+}
+
+.lg-acct-row .k {
+  color: var(--muted);
+  flex: none;
+}
+
+.lg-acct-row .v {
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.lg-acct-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+/* The sign-out form would otherwise box its button out of the flex row. */
+.lg-acct-actions form {
+  display: contents;
 }
 
 @media (max-width: 600px) {
