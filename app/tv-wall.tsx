@@ -505,10 +505,16 @@ export default function TvWall({ signedIn }: { signedIn: boolean }) {
               ctx.fillRect(0, 0, cw, ch);
             };
             paintWhite();
+            // "cover" crops the clip to fill the glass instead of letterboxing
+            // it on white — for clips with no edge detail worth keeping.
+            const cover = (sc as { fit?: string }).fit === "cover";
             screenPainters.push(() => {
               paintWhite();
               if (video.readyState >= 2 && video.videoWidth > 0) {
-                const s = Math.min(cw / video.videoWidth, ch / video.videoHeight);
+                const s = (cover ? Math.max : Math.min)(
+                  cw / video.videoWidth,
+                  ch / video.videoHeight
+                );
                 const w = video.videoWidth * s;
                 const h = video.videoHeight * s;
                 ctx.drawImage(video, (cw - w) / 2, (ch - h) / 2, w, h);
