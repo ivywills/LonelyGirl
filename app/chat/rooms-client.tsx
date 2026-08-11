@@ -775,7 +775,7 @@ export default function ChatDirectory({
         </div>
 
         <div style={{ marginTop: 24 }}>
-          <div className="lg-mood-head">
+          <div className="lg-filter-head">
             <p className="lg-serif" style={{ fontSize: 13.5, fontStyle: "italic", color: "var(--muted)", margin: 0 }}>
               how are you feeling today?
             </p>
@@ -826,7 +826,7 @@ export default function ChatDirectory({
               ))}
             </div>
           </div>
-          <div className="lg-mood-row">
+          <div className="lg-chip-row">
             {MOODS.map((m) => {
               const s = roomSurface(m.color);
               const active = mood === m.label;

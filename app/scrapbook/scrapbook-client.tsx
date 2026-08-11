@@ -56,7 +56,9 @@ export default function ScrapbookClient({
   displayName,
 }: {
   initialEntries: ScrapbookRow[];
-  userId: string;
+  // null when signed out: the wall is public to read, so the compose and
+  // delete paths bail early and the header offers sign-in instead.
+  userId: string | null;
   displayName: string;
 }) {
   const [entries, setEntries] = useState<ScrapbookRow[]>(initialEntries);
@@ -79,6 +81,7 @@ export default function ScrapbookClient({
   }
 
   async function handleFile(file: File) {
+    if (!userId) return;
     setUploading(true);
     setError("");
     try {
@@ -91,6 +94,7 @@ export default function ScrapbookClient({
   }
 
   async function pin() {
+    if (!userId) return;
     if (!caption.trim() && !imageUrl) {
       setError("Add a photo or a few words — otherwise there's nothing to pin.");
       return;
@@ -122,6 +126,7 @@ export default function ScrapbookClient({
   }
 
   async function remove(id: string) {
+    if (!userId) return;
     const previous = entries;
     setEntries((prev) => prev.filter((e) => e.id !== id));
     const { error: deleteError } = await supabase
@@ -134,12 +139,21 @@ export default function ScrapbookClient({
   return (
     <>
       <PageHeader title="Scrapbook" backHref="/" backLabel="change the channel">
-        <button type="button" className="lg-cta" onClick={() => setComposing((c) => !c)}>
-          <span className="msr" style={{ fontSize: 18 }} aria-hidden>
-            {composing ? "close" : "push_pin"}
-          </span>
-          {composing ? "Close" : "Pin something"}
-        </button>
+        {userId ? (
+          <button type="button" className="lg-cta" onClick={() => setComposing((c) => !c)}>
+            <span className="msr" style={{ fontSize: 18 }} aria-hidden>
+              {composing ? "close" : "push_pin"}
+            </span>
+            {composing ? "Close" : "Pin something"}
+          </button>
+        ) : (
+          <a className="lg-cta" href="/login?next=/scrapbook">
+            <span className="msr" style={{ fontSize: 18 }} aria-hidden>
+              login
+            </span>
+            Sign in to pin
+          </a>
+        )}
       </PageHeader>
       <main style={{ maxWidth: 1100, margin: "0 auto", padding: "24px 20px 80px" }}>
         <p style={{ margin: "0 0 6px", color: "var(--muted)", fontSize: 14 }}>

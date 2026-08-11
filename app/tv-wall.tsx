@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import TvWallCalibrate, { type Calibrator } from "@/app/tv-wall-calibrate";
 import { useRouter } from "next/navigation";
 import * as THREE from "three";
 import {
@@ -94,7 +95,7 @@ ${parallax ? `
 ` : ""}
 
   uniform mat3  uScreenInv[8];
-  uniform vec4  uScreenShape[8]; // x radius, y bulge, z enabled, w mix
+  uniform vec4  uScreenShape[8]; // x radius, y bulge, z glass fx, w mix
   uniform sampler2D uScreen0;
   uniform sampler2D uScreen1;
   uniform sampler2D uScreen2;
@@ -136,7 +137,7 @@ ${parallax ? `
      (already shifted) texture space, so it travels with the set. */
   vec3 withScreen(int i, vec2 src, vec3 c) {
     vec4 shape = screenShape(i);
-    if (shape.z < 0.5) return c;
+    if (shape.w < 0.5) return c;
 
     vec3 hp = screenInv(i) * vec3(src, 1.0);
     vec2 s = hp.xy / hp.z;
@@ -155,11 +156,15 @@ ${parallax ? `
     vec2 sb = 0.5 + ctr * (1.0 - shape.y * dot(ctr, ctr));
     vec3 vid = screenColor(i, vec2(sb.x, 1.0 - sb.y));
 
-    // A hint of tube fall-off, plus a little of the photo's own reflections.
-    // Both stay subtle: the glass in the artwork is already shaded, so laying
-    // a strong gradient over it just reads as a dark ring painted on.
-    float vignette = 1.0 - uVignette * smoothstep(0.35, 0.78, length(ctr));
-    float glint = smoothstep(0.62, 0.88, texture2D(uGlint, src).r);
+    /*
+     * A hint of tube fall-off, plus a little of the photo's own reflections.
+     * Both stay subtle: the glass in the artwork is already shaded, so laying
+     * a strong gradient over it just reads as a dark ring painted on.
+     * shape.z scales them per screen — a dark clip carries the fall-off well,
+     * but over a flat white card it just greys the edges, so those set it to 0.
+     */
+    float vignette = 1.0 - uVignette * shape.z * smoothstep(0.35, 0.78, length(ctr));
+    float glint = smoothstep(0.62, 0.88, texture2D(uGlint, src).r) * shape.z;
     vid = vid * vignette + glint * uGlintAmount;
 
     return mix(c, vid, mask * shape.w);
@@ -219,6 +224,19 @@ ${parallax ? `
 `;
 }
 
+/**
+ * How far a video screen grows past its traced glass quad. Just enough to
+ * bury the artwork's painted screen edge without climbing onto the bezel.
+ */
+const SCREEN_OVERSCAN = 1.07;
+
+/** Grow a quad about its own centre, keeping its shape. */
+function overscanQuad(quad: number[][], k: number): number[][] {
+  const cx = (quad[0][0] + quad[1][0] + quad[2][0] + quad[3][0]) / 4;
+  const cy = (quad[0][1] + quad[1][1] + quad[2][1] + quad[3][1]) / 4;
+  return quad.map(([x, y]) => [cx + (x - cx) * k, cy + (y - cy) * k]);
+}
+
 /*
  * Projective map for one screen: the unit square onto the measured glass quad
  * (Heckbert's formulation), inverted so the shader can go texture-uv ->
@@ -248,6 +266,8 @@ export default function TvWall({ signedIn }: { signedIn: boolean }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
   const [ready, setReady] = useState(false);
+  // Only built when the page is opened with ?calibrate=1 — see tv-wall-calibrate.tsx
+  const [calibrator, setCalibrator] = useState<Calibrator | null>(null);
 
   /*
    * Which composition to show. Portrait viewports get the stacked artwork,
@@ -257,7 +277,19 @@ export default function TvWall({ signedIn }: { signedIn: boolean }) {
    */
   const [sceneKey, setSceneKey] = useState<"wide" | "tall" | null>(null);
   useEffect(() => {
-    const pick = () => setSceneKey(sceneKeyFor(window.innerWidth, window.innerHeight));
+    /*
+     * ?layout=tall|wide pins the composition regardless of window size. Only
+     * useful alongside ?calibrate=1: the portrait wall is otherwise only
+     * reachable by shrinking the window right down, which makes the sets far
+     * too small to position accurately.
+     */
+    const forced = new URLSearchParams(window.location.search).get("layout");
+    const pick = () =>
+      setSceneKey(
+        forced === "tall" || forced === "wide"
+          ? forced
+          : sceneKeyFor(window.innerWidth, window.innerHeight)
+      );
     pick();
     window.addEventListener("resize", pick);
     window.addEventListener("orientationchange", pick);
@@ -412,17 +444,47 @@ export default function TvWall({ signedIn }: { signedIn: boolean }) {
             continue;
           }
           const sc = tv.screen;
-          const quadUv = sc.quad.map((p: number[]): [number, number] => [p[0], 1 - p[1]]);
-          screenInv.push(quadHomographyInverse(quadUv));
 
           const source = sc.source as
             | { type: "channel"; id: ChannelId }
             | { type: "static" }
             | { type: "video"; src: string };
 
+          /*
+           * The traced quads hug the glass, but the artwork's own painted
+           * screen runs a little past them. Under a dark clip that fringe is
+           * invisible; under a bright one it reads as leftover picture around
+           * the edge, so video screens overscan to the bezel.
+           */
+          // Only some screens carry an override, so the config's inferred
+          // union doesn't have the key on every branch. Named distinctly from
+          // the scene-level `overscan` above, which is a different thing.
+          const screenOverscan = (sc as { overscan?: number }).overscan ?? SCREEN_OVERSCAN;
+          const quadPts =
+            source.type === "video" ? overscanQuad(sc.quad, screenOverscan) : sc.quad;
+          const quadUv = quadPts.map((p: number[]): [number, number] => [p[0], 1 - p[1]]);
+          screenInv.push(quadHomographyInverse(quadUv));
+
+          // Backing canvas at the glass's real proportions. Clips stay small
+          // and nearest-filtered on purpose — chunky pixels read as CRT — but
+          // video needs the resolution to keep its type legible.
+          const pw = (sc.quad[1][0] - sc.quad[0][0]) * art.width;
+          const ph = (sc.quad[3][1] - sc.quad[0][1]) * art.height;
+          const cw = source.type === "video" ? 320 : 96;
+          const ch = Math.max(48, Math.round((cw * ph) / pw));
+          const canvas = document.createElement("canvas");
+          canvas.width = cw;
+          canvas.height = ch;
+          const ctx = canvas.getContext("2d")!;
+
+          const texture = new THREE.CanvasTexture(canvas);
+          texture.magFilter =
+            source.type === "video" ? THREE.LinearFilter : THREE.NearestFilter;
+          texture.minFilter = THREE.LinearFilter;
+          texture.generateMipmaps = false;
+          screenTextures.push(texture);
+
           if (source.type === "video") {
-            // Plays muted/looped; until it has frames the artwork's own baked
-            // screen stays visible (mix weight 0).
             const video = document.createElement("video");
             video.src = source.src;
             video.muted = true;
@@ -430,51 +492,49 @@ export default function TvWall({ signedIn }: { signedIn: boolean }) {
             video.playsInline = true;
             video.crossOrigin = "anonymous";
             video.play().catch(() => {});
-            const videoTexture = new THREE.VideoTexture(video);
-            videoTexture.magFilter = THREE.LinearFilter;
-            videoTexture.minFilter = THREE.LinearFilter;
-            screenTextures.push(videoTexture);
-            screenPainters.push(null);
-            const markReady = () => screenShape[i].setW(1);
-            video.addEventListener("loadeddata", markReady);
+
+            /*
+             * White goes down first and stays under every frame: the clip is
+             * drawn to fit rather than stretched, so whatever it doesn't cover
+             * reads as blank screen instead of the artwork underneath. Painted
+             * once here too, so the glass is already white on the first frame
+             * while the video is still loading.
+             */
+            const paintWhite = () => {
+              ctx.fillStyle = "#ffffff";
+              ctx.fillRect(0, 0, cw, ch);
+            };
+            paintWhite();
+            screenPainters.push(() => {
+              paintWhite();
+              if (video.readyState >= 2 && video.videoWidth > 0) {
+                const s = Math.min(cw / video.videoWidth, ch / video.videoHeight);
+                const w = video.videoWidth * s;
+                const h = video.videoHeight * s;
+                ctx.drawImage(video, (cw - w) / 2, (ch - h) / 2, w, h);
+              }
+              texture.needsUpdate = true;
+            });
             cleanups.push(() => {
-              video.removeEventListener("loadeddata", markReady);
               video.pause();
               video.removeAttribute("src");
             });
+          } else if (source.type === "channel") {
+            screenPainters.push((t) => {
+              drawClip(ctx, cw, ch, source.id, t);
+              texture.needsUpdate = true;
+            });
           } else {
-            // Backing canvas at the glass's real proportions; small and
-            // nearest-filtered on purpose — chunky pixels read as CRT.
-            const pw = (sc.quad[1][0] - sc.quad[0][0]) * art.width;
-            const ph = (sc.quad[3][1] - sc.quad[0][1]) * art.height;
-            const cw = 96;
-            const ch = Math.max(48, Math.round((cw * ph) / pw));
-            const canvas = document.createElement("canvas");
-            canvas.width = cw;
-            canvas.height = ch;
-            const ctx = canvas.getContext("2d")!;
-
-            const texture = new THREE.CanvasTexture(canvas);
-            texture.magFilter = THREE.NearestFilter;
-            texture.minFilter = THREE.LinearFilter;
-            texture.generateMipmaps = false;
-            screenTextures.push(texture);
-
-            if (source.type === "channel") {
-              screenPainters.push((t) => {
-                drawClip(ctx, cw, ch, source.id, t);
-                texture.needsUpdate = true;
-              });
-            } else {
-              screenPainters.push(() => {
-                drawStatic(ctx, cw, ch);
-                texture.needsUpdate = true;
-              });
-            }
+            screenPainters.push(() => {
+              drawStatic(ctx, cw, ch);
+              texture.needsUpdate = true;
+            });
           }
 
+          // Video screens skip the glass fall-off and reflections entirely, so
+          // they read as clean white rather than a greyed-out card.
           screenShape.push(
-            new THREE.Vector4(sc.radius, sc.bulge, 1, source.type === "video" ? 0 : 1)
+            new THREE.Vector4(sc.radius, sc.bulge, source.type === "video" ? 0 : 1, 1)
           );
         }
 
@@ -624,6 +684,63 @@ export default function TvWall({ signedIn }: { signedIn: boolean }) {
         });
         cleanups.push(() => renderer.setAnimationLoop(null));
 
+        /*
+         * Calibration handles. The maths here is the inverse of the picking
+         * path above: config space -> uv -> the cover-fitted plane -> pixels,
+         * undoing the shader's own overscan on the way so a handle sits
+         * exactly where its screen renders.
+         */
+        if (new URLSearchParams(window.location.search).has("calibrate")) {
+          const fit = () => {
+            const viewAspect = window.innerWidth / window.innerHeight;
+            return {
+              sx: Math.max(1, imageAspect / viewAspect),
+              sy: Math.max(1, viewAspect / imageAspect),
+            };
+          };
+          setCalibrator({
+            layout: sceneKey === "tall" ? "tall" : "wide",
+            tvs: sceneTvs.map((tv) => ({
+              name: tv.name,
+              quad: tv.screen.quad,
+              radius: tv.screen.radius,
+              isVideo: (tv.screen.source as { type: string }).type === "video",
+            })),
+            toScreen: (x, y) => {
+              const { sx, sy } = fit();
+              const vu = 0.5 + (x - 0.5) / overscan;
+              const vv = 0.5 + (1 - y - 0.5) / overscan;
+              return {
+                x: (((vu * 2 - 1) * sx + 1) / 2) * window.innerWidth,
+                y: ((1 - (vv * 2 - 1) * sy) / 2) * window.innerHeight,
+              };
+            },
+            toConfig: (px, py) => {
+              const { sx, sy } = fit();
+              const ndcX = (px / window.innerWidth) * 2 - 1;
+              const ndcY = 1 - (py / window.innerHeight) * 2;
+              const vu = (ndcX / sx + 1) / 2;
+              const vv = (ndcY / sy + 1) / 2;
+              return {
+                x: 0.5 + (vu - 0.5) * overscan,
+                y: 1 - (0.5 + (vv - 0.5) * overscan),
+              };
+            },
+            setQuad: (index, quad) => {
+              const tv = sceneTvs[index];
+              if (!tv) return;
+              tv.screen.quad = quad;
+              const so = (tv.screen as { overscan?: number }).overscan ?? SCREEN_OVERSCAN;
+              const isVideo = (tv.screen.source as { type: string }).type === "video";
+              const pts = isVideo ? overscanQuad(quad, so) : quad;
+              // screenInv IS the uniform's array, so writing here uploads it.
+              screenInv[index] = quadHomographyInverse(
+                pts.map((p): [number, number] => [p[0], 1 - p[1]])
+              );
+            },
+          });
+        }
+
         setReady(true);
       },
       (err) => {
@@ -634,6 +751,7 @@ export default function TvWall({ signedIn }: { signedIn: boolean }) {
     return () => {
       disposed = true;
       setReady(false);
+      setCalibrator(null);
       cleanups.forEach((fn) => fn());
     };
     // Rebuilt whenever the composition changes; auth flows via signedInRef.
@@ -651,6 +769,8 @@ export default function TvWall({ signedIn }: { signedIn: boolean }) {
         transition: "opacity 0.6s ease",
       }}
     >
+      {calibrator && <TvWallCalibrate key={calibrator.layout} calibrator={calibrator} />}
+
       {/* Keyboard & screen-reader path: real links, visible only on focus */}
       <nav aria-label="TV wall">
         {tvs.map((tv: { name: string; href: unknown }) => (

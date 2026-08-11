@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { ImagePicker, ROOM_COLORS, roomSurface, uploadRoomImage } from "@/app/chat/rooms-client";
 import PageHeader from "@/app/page-header";
@@ -97,13 +97,30 @@ export default function EventsClient({
 }: {
   events: EventRow[];
   initialAttendees: Attendee[];
-  userId: string;
+  // null when signed out: the page is public to read, so every write path
+  // below bails early and the UI offers sign-in instead of the action.
+  userId: string | null;
   displayName: string;
 }) {
   const [attendees, setAttendees] = useState<Attendee[]>(initialAttendees);
   const [query, setQuery] = useState("");
   const [scope, setScope] = useState<"upcoming" | "booked" | "hosting" | "past">("upcoming");
   const [activeCat, setActiveCat] = useState<string | null>(null);
+  // Phone-only: whether the collapsed scope row is showing
+  const [showScope, setShowScope] = useState(false);
+  /*
+   * The long placeholder doesn't fit on a phone. Starts false so the server
+   * and first client render agree, then settles on mount — same 600px
+   * breakpoint the stylesheet uses.
+   */
+  const [narrow, setNarrow] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 600px)");
+    const sync = () => setNarrow(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
   const [creating, setCreating] = useState(false);
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -161,6 +178,7 @@ export default function EventsClient({
     );
 
   async function book(e: EventRow) {
+    if (!userId) return;
     setError("");
     const supabase = createClient();
     const { error: err } = await supabase
@@ -171,6 +189,7 @@ export default function EventsClient({
   }
 
   async function cancel(e: EventRow) {
+    if (!userId) return;
     setError("");
     const supabase = createClient();
     const { error: err } = await supabase
@@ -183,6 +202,7 @@ export default function EventsClient({
   }
 
   async function deleteEvent(e: EventRow) {
+    if (!userId) return;
     if (!confirm(`Delete "${e.title}"? Everyone's bookings go with it.`)) return;
     setError("");
     const supabase = createClient();
@@ -196,6 +216,7 @@ export default function EventsClient({
 
   async function createEvent(ev: React.FormEvent) {
     ev.preventDefault();
+    if (!userId) return;
     if (!title.trim() || !startsAt) return;
     setBusy(true);
     setError("");
@@ -245,14 +266,23 @@ export default function EventsClient({
         title="Events"
         backHref="/"
         backLabel="change the channel"
-        links={[{ href: "/chat", label: "chatrooms", icon: "forum" }]}
       >
-        <button type="button" className="lg-cta" onClick={() => setCreating((v) => !v)}>
-          <span className="msr" style={{ fontSize: 18 }} aria-hidden>
-            {creating ? "close" : "add_circle"}
-          </span>
-          {creating ? "Close" : "Host an event"}
-        </button>
+        {/* Hidden on phones, like the chat directory's create button */}
+        {userId ? (
+          <button type="button" className="lg-cta lg-hide-narrow" onClick={() => setCreating((v) => !v)}>
+            <span className="msr" style={{ fontSize: 18 }} aria-hidden>
+              {creating ? "close" : "add_circle"}
+            </span>
+            {creating ? "Close" : "Host an event"}
+          </button>
+        ) : (
+          <a className="lg-cta lg-hide-narrow" href="/login?next=/events">
+            <span className="msr" style={{ fontSize: 18 }} aria-hidden>
+              login
+            </span>
+            Sign in to host
+          </a>
+        )}
       </PageHeader>
       <main style={{ maxWidth: 860, margin: "0 auto", padding: "28px 20px 60px", width: "100%" }}>
       <p style={{ color: "var(--muted)", fontSize: 14, marginBottom: 18 }}>
@@ -336,7 +366,7 @@ export default function EventsClient({
               setUploading(true);
               setError("");
               try {
-                setImageUrl(await uploadRoomImage(createClient(), userId, file));
+                setImageUrl(await uploadRoomImage(createClient(), userId ?? "anon", file));
               } catch (err) {
                 setError(err instanceof Error ? err.message : "Upload failed.");
               }
@@ -383,12 +413,28 @@ export default function EventsClient({
       )}
 
       <input
-        placeholder="Search events by title, place or description..."
+        placeholder={narrow ? "Search events" : "Search events by title, place or description..."}
         value={query}
         onChange={(e) => setQuery(e.target.value)}
+        aria-label="Search events"
         style={{ marginBottom: 10 }}
       />
-      <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+      <div className="lg-filter-head">
+        {/* Phone-only: the scope pills live behind this until tapped */}
+        <button
+          type="button"
+          className="lg-filter-btn"
+          onClick={() => setShowScope((v) => !v)}
+          aria-expanded={showScope}
+          aria-label={scope === "upcoming" ? "Filter events" : `Filter events — showing ${scope}`}
+          title="Filter events"
+        >
+          <span className="msr" style={{ fontSize: 18 }} aria-hidden>
+            tune
+          </span>
+          {scope !== "upcoming" && <span className="lg-filter-dot" aria-hidden />}
+        </button>
+        <div className={`lg-scope-row lg-scope-row--start${showScope ? " open" : ""}`}>
         {(
           [
             ["upcoming", "Upcoming"],
@@ -399,7 +445,10 @@ export default function EventsClient({
         ).map(([key, label]) => (
           <button
             key={key}
-            onClick={() => setScope(key)}
+            onClick={() => {
+              setScope(key);
+              setShowScope(false);
+            }}
             style={{
               width: "auto",
               padding: "4px 14px",
@@ -413,18 +462,10 @@ export default function EventsClient({
             {label}
           </button>
         ))}
+        </div>
       </div>
       {usedCats.length > 0 && (
-        <div
-          style={{
-            display: "flex",
-            columnGap: 12,
-            rowGap: 6,
-            flexWrap: "wrap",
-            alignItems: "center",
-            marginBottom: 20,
-          }}
-        >
+        <div className="lg-chip-row" style={{ columnGap: 12, rowGap: 6, marginBottom: 20 }}>
           {usedCats.map((c) => {
             const active = activeCat === c;
             return (
@@ -631,7 +672,23 @@ export default function EventsClient({
                           </span>
                         </button>
                       )}
-                      {booked ? (
+                      {!userId ? (
+                        <a
+                          className="primary"
+                          href="/login?next=/events"
+                          style={{
+                            width: "auto",
+                            padding: "5px 14px",
+                            fontSize: 12,
+                            display: "inline-flex",
+                            alignItems: "center",
+                            borderRadius: 8,
+                            textDecoration: "none",
+                          }}
+                        >
+                          Sign in to book
+                        </a>
+                      ) : booked ? (
                         <button
                           onClick={() => cancel(e)}
                           style={{ width: "auto", padding: "5px 14px", fontSize: 12 }}
