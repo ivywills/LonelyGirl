@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { ImagePicker, ROOM_COLORS, roomSurface, uploadRoomImage } from "@/app/chat/rooms-client";
+import { ProfileTrigger } from "@/app/profile-card";
+import { colorForUserId, initialOf } from "@/lib/profile";
 import PageHeader from "@/app/page-header";
 
 export type EventRow = {
@@ -609,21 +611,53 @@ export default function EventsClient({
                     paddingTop: 12,
                   }}
                 >
-                  <span
-                    style={{ fontSize: 12, color: sub }}
-                    title={attendees
-                      .filter((a) => a.event_id === e.id)
-                      .map((a) => a.display_name || "someone")
-                      .join(", ")}
-                  >
-                    {going === 0
-                      ? "No one yet — be the first"
-                      : `${attendees
-                          .filter((a) => a.event_id === e.id)
-                          .slice(0, 2)
-                          .map((a) => a.display_name || "someone")
-                          .join(", ")}${going > 2 ? ` +${going - 2}` : ""} going`}
-                    {spotsLeft != null ? ` · ${spotsLeft} spot${spotsLeft === 1 ? "" : "s"} left` : ""}
+                  {/*
+                    Overlapping avatar circles instead of the old "X, Y +N going"
+                    text. Colour and initial come from the attendee row we already
+                    have, so this stays one query — tapping fetches the real card.
+                  */}
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 12, color: sub, minWidth: 0 }}>
+                    {going === 0 ? (
+                      "No one yet — be the first"
+                    ) : (
+                      <>
+                        <span style={{ display: "inline-flex" }}>
+                          {attendees
+                            .filter((a) => a.event_id === e.id)
+                            .slice(0, 4)
+                            .map((a, i) => (
+                              <ProfileTrigger
+                                key={a.user_id}
+                                userId={a.user_id}
+                                style={{ marginLeft: i ? -8 : 0, borderRadius: "50%", display: "inline-flex" }}
+                              >
+                                <span
+                                  title={a.display_name || "someone"}
+                                  style={{
+                                    width: 24,
+                                    height: 24,
+                                    borderRadius: "50%",
+                                    background: colorForUserId(a.user_id),
+                                    border: "2px solid var(--card)",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    fontSize: 11,
+                                    fontWeight: 700,
+                                    color: "#2b2733",
+                                  }}
+                                >
+                                  {initialOf(a.display_name || "") || "\u{1F464}"}
+                                </span>
+                              </ProfileTrigger>
+                            ))}
+                        </span>
+                        <span style={{ whiteSpace: "nowrap" }}>
+                          {going > 4 ? `+${going - 4} ` : ""}going
+                        </span>
+                      </>
+                    )}
+                    {spotsLeft != null ? ` \u00B7 ${spotsLeft} spot${spotsLeft === 1 ? "" : "s"} left` : ""}
                   </span>
                   {!isPast && (
                     <span style={{ marginLeft: "auto", display: "inline-flex", gap: 6, alignItems: "center" }}>

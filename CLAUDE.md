@@ -20,15 +20,16 @@
 
 **Speed over hand-offs**
 - Don't hand me manual steps I didn't ask for. If you can run it, run it. A list of things for me to paste somewhere is a worse answer than just doing it and telling me what happened.
-- That includes SQL: run migrations yourself, don't leave them sitting in `supabase/` waiting for me. The carve-outs below are the only exceptions.
+- That includes SQL: **run migrations yourself**, don't leave them sitting in `supabase/` waiting for me.
+- The one exception is pushing. I review diffs in GitHub Desktop and push myself. See Approvals.
 
 **Approvals — always ask first**
-- Commit and push to `main` yourself when work is done — I don't need to review diffs first. Pushing `main` deploys to Vercel production, so **verify `npm run build` passes before every push**; if it fails, commit but don't push, and tell me. Don't sweep up unrelated half-finished work in my tree without saying what's going in the commit.
+- **Commit locally when work is done, but never `git push`.** I push to Vercel myself via GitHub Desktop so I can review the diff first. Still **verify `npm run build` passes** and tell me plainly if it doesn't. Don't sweep up unrelated half-finished work in my tree without saying what's going in the commit.
 - **There is only one database.** Local dev and the Vercel deployment both point at Supabase project `xngmeoxwpmtesmmutaeu` — there is no staging copy, so every migration is a production migration and every row you touch is live data.
-- Run them yourself with `psql "$PGURL"`, built from `SUPABASE_DB_URL_DEV` in `.env.local` (gitignored — reference the variable, never print or paste it). The direct host `db.<ref>.supabase.co` is **IPv6-only and unreachable from this Mac**; you must go through the IPv4 pooler at `aws-0-ca-central-1.pooler.supabase.com:5432` with user `postgres.xngmeoxwpmtesmmutaeu`. Port 5432 (session mode), not 6543.
+- **Run migrations yourself** with `psql "$PGURL"`, built from `SUPABASE_DB_URL_DEV` in `.env.local` (gitignored — reference the variable, never print or paste it). The direct host `db.<ref>.supabase.co` is **IPv6-only and unreachable from this Mac**; go through the IPv4 pooler at `aws-0-ca-central-1.pooler.supabase.com:5432` with user `postgres.xngmeoxwpmtesmmutaeu`. Port 5432 (session mode), not 6543.
 - Keep the `.sql` file in `supabase/` as the source of truth and write it idempotent so it can be re-run. Snapshot anything you're about to overwrite so there's a rollback, and tell me what you ran and what it reported.
 - Ask me first before `drop`, `delete`, `truncate`, or a rename that loses data — there's no second database to catch a mistake. Everything else (new tables, columns, policies, indexes, seeds, backfills) just run.
-- Flag-then-run, don't stop: if a migration changes who can see existing data, run it and tell me plainly what became visible and how to undo it. Don't sit on it waiting for permission.
+- Flag-then-run, don't stop: if a migration changes who can see existing data, run it and tell me plainly what became visible and how to undo it.
 - Never delete or move my files without telling me exactly which files and why, and getting my OK. Same for branches and git history.
 
 ## Project

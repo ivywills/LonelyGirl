@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { ImagePicker, ROOM_COLORS, roomSurface, uploadRoomImage, type Room } from "@/app/chat/rooms-client";
+import { ProfileTrigger } from "@/app/profile-card";
 import PageHeader from "@/app/page-header";
 import { useChatMenu } from "@/app/chat/chat-shell";
 
@@ -857,7 +858,14 @@ export default function RoomClient({
                   }}
                 >
                   <p style={{ fontSize: 11, opacity: 0.75, marginBottom: 2 }}>
-                    {m.display_name}
+                    {/* Own messages aren't tappable — you don't need a sheet about yourself. */}
+                    {m.user_id === userId ? (
+                      "You"
+                    ) : (
+                      <ProfileTrigger userId={m.user_id} style={{ textDecoration: "underline", textUnderlineOffset: 2 }}>
+                        {m.display_name}
+                      </ProfileTrigger>
+                    )}
                     <span style={{ marginLeft: 8, fontSize: 10, opacity: 0.8 }}>{msgTime(m.created_at)}</span>
                   </p>
                   {m.kind === "gif" ? (
