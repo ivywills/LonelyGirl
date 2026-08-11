@@ -31,15 +31,51 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
+  const path = request.nextUrl.pathname;
+
+  /*
+   * Areas that need an account. Anything not listed (/, /waitlist, /login,
+   * /signup, /auth/*) stays open — the Instagram bio link has to work without
+   * one.
+   */
+  const GUARDED = ["/account", "/chat", "/events", "/playlists", "/scrapbook", "/shop"];
+  const isGuarded = GUARDED.some((p) => path.startsWith(p));
+
   // Protect signed-in areas: redirect signed-out users to /login
-  if (
-    !user &&
-    (request.nextUrl.pathname.startsWith("/account") ||
-      request.nextUrl.pathname.startsWith("/chat"))
-  ) {
+  if (!user && isGuarded) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
+    // Remember where she was headed so login can send her back there.
+    url.search = "";
+    url.searchParams.set(
+      "next",
+      request.nextUrl.pathname + request.nextUrl.search
+    );
     return NextResponse.redirect(url);
+  }
+
+  /*
+   * Onboarding gate. A signed-in user with no name/neighborhood can't reach any
+   * guarded area until she's finished — every screen downstream assumes a
+   * profile exists rather than falling back to user_metadata.
+   *
+   * One indexed primary-key lookup, and only on guarded paths, so the open
+   * pages (/waitlist especially) stay a zero-query render.
+   */
+  if (user && isGuarded && !path.startsWith("/onboarding")) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("name, neighborhood")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    const complete = Boolean(profile?.name?.trim() && profile?.neighborhood?.trim());
+    if (!complete) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/onboarding";
+      url.search = "";
+      return NextResponse.redirect(url);
+    }
   }
 
   return supabaseResponse;

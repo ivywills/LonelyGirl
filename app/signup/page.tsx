@@ -5,9 +5,9 @@ import GoogleButton from "@/app/auth/google-button";
 export default async function SignupPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; success?: string }>;
+  searchParams: Promise<{ error?: string; success?: string; next?: string }>;
 }) {
-  const { error, success } = await searchParams;
+  const { error, success, next } = await searchParams;
 
   return (
     <main className="center">
@@ -15,7 +15,7 @@ export default async function SignupPage({
         <h1>Create your account</h1>
         <p className="sub">Join LonelyGirl in seconds.</p>
 
-        <GoogleButton label="Continue with Google" />
+        <GoogleButton label="Continue with Google" next={next} />
 
         <div className="divider">or sign up with email</div>
 
@@ -23,6 +23,7 @@ export default async function SignupPage({
         {success && <p className="msg-success">{success}</p>}
 
         <form action={signUpWithEmail}>
+          {next && <input type="hidden" name="next" value={next} />}
           <label htmlFor="email">Email</label>
           <input
             id="email"
@@ -46,7 +47,10 @@ export default async function SignupPage({
         </form>
 
         <p className="alt">
-          Already have an account? <Link href="/login">Log in</Link>
+          Already have an account?{" "}
+          <Link href={next ? `/login?next=${encodeURIComponent(next)}` : "/login"}>
+            Log in
+          </Link>
         </p>
       </div>
     </main>

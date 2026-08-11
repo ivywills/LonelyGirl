@@ -10,14 +10,33 @@ function getRedirectBase(origin: string | null) {
   return process.env.NEXT_PUBLIC_SITE_URL ?? origin ?? "http://localhost:3000";
 }
 
+/*
+ * Where to land after auth. Only same-site paths are honored — anything
+ * absolute ("https://…") or protocol-relative ("//…") could bounce a girl
+ * who just typed her password onto someone else's site.
+ */
+function safeNext(formData: FormData) {
+  const next = String(formData.get("next") ?? "");
+  return next.startsWith("/") && !next.startsWith("//") ? next : "/";
+}
+
+/** Re-encode a destination onto an error/success redirect so it survives. */
+function withNext(url: string, next: string) {
+  return next === "/" ? url : url + "&next=" + encodeURIComponent(next);
+}
+
 export async function signUpWithEmail(formData: FormData) {
   const email = String(formData.get("email") ?? "").trim();
   const password = String(formData.get("password") ?? "");
+  const next = safeNext(formData);
 
   if (!email || password.length < 8) {
     redirect(
-      "/signup?error=" +
-        encodeURIComponent("Enter a valid email and a password of at least 8 characters.")
+      withNext(
+        "/signup?error=" +
+          encodeURIComponent("Enter a valid email and a password of at least 8 characters."),
+        next
+      )
     );
   }
 
@@ -28,36 +47,43 @@ export async function signUpWithEmail(formData: FormData) {
     email,
     password,
     options: {
-      emailRedirectTo: `${getRedirectBase(origin)}/auth/callback`,
+      // The confirmation link lands on the callback, which honors ?next=
+      emailRedirectTo:
+        `${getRedirectBase(origin)}/auth/callback` +
+        (next === "/" ? "" : `?next=${encodeURIComponent(next)}`),
     },
   });
 
   if (error) {
-    redirect("/signup?error=" + encodeURIComponent(error.message));
+    redirect(withNext("/signup?error=" + encodeURIComponent(error.message), next));
   }
 
   redirect(
-    "/signup?success=" +
-      encodeURIComponent("Check your email to confirm your account.")
+    withNext(
+      "/signup?success=" +
+        encodeURIComponent("Check your email to confirm your account."),
+      next
+    )
   );
 }
 
 export async function logInWithEmail(formData: FormData) {
   const email = String(formData.get("email") ?? "").trim();
   const password = String(formData.get("password") ?? "");
+  const next = safeNext(formData);
 
   const supabase = await createClient();
 
   const { error } = await supabase.auth.signInWithPassword({ email, password });
 
   if (error) {
-    redirect("/login?error=" + encodeURIComponent(error.message));
+    redirect(withNext("/login?error=" + encodeURIComponent(error.message), next));
   }
 
   // Fresh sign-in gets the static once
   (await cookies()).delete(INTRO_COOKIE);
   revalidatePath("/", "layout");
-  redirect("/");
+  redirect(next);
 }
 
 export async function signOut() {

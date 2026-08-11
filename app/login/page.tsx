@@ -5,9 +5,9 @@ import GoogleButton from "@/app/auth/google-button";
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; next?: string }>;
 }) {
-  const { error } = await searchParams;
+  const { error, next } = await searchParams;
 
   return (
     <main className="center">
@@ -15,13 +15,14 @@ export default async function LoginPage({
         <h1>Welcome back</h1>
         <p className="sub">Log in to LonelyGirl.</p>
 
-        <GoogleButton label="Continue with Google" />
+        <GoogleButton label="Continue with Google" next={next} />
 
         <div className="divider">or log in with email</div>
 
         {error && <p className="msg-error">{error}</p>}
 
         <form action={logInWithEmail}>
+          {next && <input type="hidden" name="next" value={next} />}
           <label htmlFor="email">Email</label>
           <input
             id="email"
@@ -44,7 +45,10 @@ export default async function LoginPage({
         </form>
 
         <p className="alt">
-          New here? <Link href="/signup">Create an account</Link>
+          New here?{" "}
+          <Link href={next ? `/signup?next=${encodeURIComponent(next)}` : "/signup"}>
+            Create an account
+          </Link>
         </p>
       </div>
     </main>

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { isNativeMobile, NATIVE_AUTH_REDIRECT } from "@/lib/runtime";
 
-export default function GoogleButton({ label }: { label: string }) {
+export default function GoogleButton({ label, next }: { label: string; next?: string }) {
   const [loading, setLoading] = useState(false);
 
   async function handleClick() {
@@ -18,10 +18,16 @@ export default function GoogleButton({ label }: { label: string }) {
     // window this stays an ordinary redirect.
     const native = isNativeMobile();
 
+    // Same-site paths only — the callback lands wherever this says.
+    const dest = next && next.startsWith("/") && !next.startsWith("//") ? next : "";
+    const callback =
+      `${window.location.origin}/auth/callback` +
+      (dest ? `?next=${encodeURIComponent(dest)}` : "");
+
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: native ? NATIVE_AUTH_REDIRECT : `${window.location.origin}/auth/callback`,
+        redirectTo: native ? NATIVE_AUTH_REDIRECT : callback,
         skipBrowserRedirect: native,
       },
     });
