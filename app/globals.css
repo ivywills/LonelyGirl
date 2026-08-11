@@ -1107,6 +1107,25 @@ body {
   line-height: 1.56;
 }
 
+/* The things you can turn up to, on their own row under the sentence. */
+.wl-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-bottom: 12px;
+}
+
+.wl-tag {
+  padding: 4px 11px;
+  border-radius: 999px;
+  background: var(--wl-butter);
+  color: var(--wl-ink);
+  font-size: 13.5px;
+  font-weight: 500;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
 /* Butter CTA with the same hard offset as the card, and a real press. */
 .wl-sky .wl-card button.primary {
   background: var(--wl-butter);

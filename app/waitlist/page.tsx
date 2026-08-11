@@ -39,11 +39,17 @@ export default async function WaitlistPage({
           Somewhere to gather when you&rsquo;re feeling alone.
         </h1>
 
-        <p style={{ color: "var(--muted)", marginBottom: 10 }}>
+        <p style={{ color: "var(--muted)", marginBottom: 12 }}>
           LonelyGirl is a small, women-only community in Toronto. Chat rooms
-          that are open at any hour, and things to turn up to — film nights,
-          book clubs, long walks, dinners.
+          that are open at any hour, and things to turn up to:
         </p>
+
+        <div className="wl-tags">
+          <span className="wl-tag">film nights</span>
+          <span className="wl-tag">book clubs</span>
+          <span className="wl-tag">long walks</span>
+          <span className="wl-tag">dinners</span>
+        </div>
         <p style={{ color: "var(--muted)", marginBottom: 10 }}>
           It stays small and supportive.
         </p>
