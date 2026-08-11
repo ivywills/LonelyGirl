@@ -6,6 +6,9 @@
  *   final_tv_plate.png   — wall + floor with every TV inpainted away
  *   final_tv_glint.png    — blurred luminance, the photo's glass reflections
  *
+ * The page serves .webp versions of the big textures — run
+ * scripts/make-webp.mjs after this to refresh them.
+ *
  * WHY LAYERS AND NOT A DEPTH MAP. A depth map makes the parallax a per-pixel
  * re-read of one image, so a silhouette is a cliff in the displacement field
  * and boundary pixels get stretched across it — the corners visibly gliding

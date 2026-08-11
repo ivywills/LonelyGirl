@@ -66,6 +66,9 @@ export default function StaticIntro({
     const nctx = noiseCanvas.getContext("2d");
 
     const build = () => {
+      // A zero-size viewport (background tab, hidden pane) would crash
+      // getImageData below; the resize listener rebuilds once it has a size.
+      if (window.innerWidth === 0 || window.innerHeight === 0) return;
       W = Math.ceil(window.innerWidth / SCALE);
       H = Math.ceil(window.innerHeight / SCALE);
       canvas.width = W;
