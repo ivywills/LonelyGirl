@@ -18,7 +18,7 @@ import SearchableChips, { inputStyle } from "@/app/chip-select";
 import { saveProfile, type ProfileInput } from "@/app/onboarding/actions";
 import type { ProfileCard } from "@/lib/profile";
 
-const STEPS = 8;
+const STEPS = 9;
 
 /** Same rules as uploadRoomImage, different bucket. Path is userId/… so RLS can check ownership. */
 async function uploadAvatar(userId: string, file: File): Promise<string> {
@@ -50,7 +50,9 @@ function ProgressBar({ step }: { step: number }) {
             height: 5,
             borderRadius: 5,
             background: i <= step ? T.butterDeep : T.tan2,
-            transition: "background .2s",
+            // The segment she's on glows a little; done ones just stay warm.
+            boxShadow: i === step ? `0 0 6px 1px ${T.butterDeep}88` : "none",
+            transition: "background .2s, box-shadow .2s",
           }}
         />
       ))}
@@ -162,8 +164,12 @@ export default function Onboarding({
     <main
       className="wl-sky"
       style={{
-        minHeight: "100dvh",
-        maxHeight: "100dvh",
+        // A definite height, not just a max: the card's maxHeight is a
+        // percentage, and percentages don't resolve against min/max alone —
+        // without this the card can silently outgrow a short screen and put
+        // the Continue button past the bottom edge with no way to scroll.
+        height: "100dvh",
+        boxSizing: "border-box",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
@@ -190,21 +196,51 @@ export default function Onboarding({
       >
         {/* ---- fixed head ---- */}
         <div style={{ flex: "none" }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, minHeight: 24 }}>
-            {step > 0 ? (
-              <button
-                type="button"
-                onClick={() => setStep((s) => s - 1)}
-                aria-label="Back"
-                style={{ background: "none", border: "none", cursor: "pointer", fontSize: 19, color: T.muted, padding: 0, lineHeight: 1 }}
-              >
-                ←
-              </button>
-            ) : (
-              <span />
-            )}
-            <span style={{ fontSize: 12, color: T.faint, fontWeight: 600 }}>
-              {step + 1} of {STEPS}
+          {/* One stable row every step: back circle on the left (hidden but
+              still occupying its spot on step 1, so nothing jumps), step pill
+              on the right. */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+            <button
+              type="button"
+              onClick={() => setStep((s) => s - 1)}
+              aria-label="Back"
+              disabled={step === 0}
+              style={{
+                width: 30,
+                height: 30,
+                borderRadius: "50%",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                background: T.paper,
+                border: `1.5px solid ${T.tan2}`,
+                color: T.muted,
+                fontSize: 15,
+                lineHeight: 1,
+                padding: 0,
+                cursor: "pointer",
+                flex: "none",
+                visibility: step === 0 ? "hidden" : "visible",
+              }}
+            >
+              ←
+            </button>
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 5,
+                padding: "4px 11px",
+                borderRadius: 999,
+                background: T.butterTint,
+                color: T.ink,
+                fontSize: 12,
+                fontWeight: 700,
+                letterSpacing: ".02em",
+                fontVariantNumeric: "tabular-nums",
+              }}
+            >
+              {step + 1} / {STEPS}
             </span>
           </div>
           <ProgressBar step={step} />
@@ -319,18 +355,24 @@ export default function Onboarding({
             </>
           )}
 
+          {/* Age and job were one "basics" step, but together they overflow a
+              short phone and push Continue off screen — split, each fits. */}
           {step === 3 && (
             <>
-              <StepTitle sub="Both optional, and you can hide them later.">The basics</StepTitle>
-              <Label>AGE</Label>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 20 }}>
+              <StepTitle sub="Optional, and you can hide it later.">How old are you?</StepTitle>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                 {AGE_RANGES.map((a) => (
                   <button key={a} type="button" onClick={() => setAge(age === a ? "" : a)} aria-pressed={age === a} style={chip(age === a, ...CHIP_COLORS.basics)}>
                     {a}
                   </button>
                 ))}
               </div>
-              <Label>WHAT YOU DO</Label>
+            </>
+          )}
+
+          {step === 4 && (
+            <>
+              <StepTitle sub="Optional, and you can hide it later.">What do you do?</StepTitle>
               <SearchableChips
                 options={JOBS}
                 selected={job ? [job] : []}
@@ -341,7 +383,7 @@ export default function Onboarding({
             </>
           )}
 
-          {step === 4 && (
+          {step === 5 && (
             <>
               <StepTitle sub="Pick as many as you like.">What are you into?</StepTitle>
               <SearchableChips
@@ -354,7 +396,7 @@ export default function Onboarding({
             </>
           )}
 
-          {step === 5 && (
+          {step === 6 && (
             <>
               <StepTitle sub="Handy for finding someone to go with.">How do you like to move?</StepTitle>
               <SearchableChips
@@ -367,7 +409,7 @@ export default function Onboarding({
             </>
           )}
 
-          {step === 6 && (
+          {step === 7 && (
             <>
               <StepTitle sub="Totally optional, and only ever visible to you. It never shows on your profile — it just helps us understand who's here.">
                 Anything you&rsquo;re going through?
@@ -378,11 +420,14 @@ export default function Onboarding({
                 onToggle={toggle(struggles, setStruggles)}
                 colors={CHIP_COLORS.struggles}
                 placeholder="Search"
+                // The long intro copy above eats the room the fourth row
+                // needs on a 568px-tall phone.
+                rows={3}
               />
             </>
           )}
 
-          {step === 7 && (
+          {step === 8 && (
             <>
               <div style={{ position: "relative" }}>
                 <style>{`
@@ -403,7 +448,16 @@ export default function Onboarding({
                 ))}
                 <StepTitle sub="You can change any of this later from your account.">This is you 💌</StepTitle>
               </div>
-              <div style={{ display: "flex", justifyContent: "center", padding: "4px 0 6px" }}>
+              <style>{`
+                /* The finished card is a hair taller than the smallest phones
+                   allow — shrink the preview slightly there instead of making
+                   her scroll her own card. zoom affects layout, unlike
+                   transform, so the step's height really does come down. */
+                @media (max-height: 620px) {
+                  .onb-preview { zoom: 0.85; }
+                }
+              `}</style>
+              <div className="onb-preview" style={{ display: "flex", justifyContent: "center", padding: "4px 0 6px" }}>
                 <ProfileCardView profile={preview} />
               </div>
             </>
@@ -428,7 +482,7 @@ export default function Onboarding({
             >
               {step === 0 ? "Let's go" : step === STEPS - 1 ? (pending ? "Saving…" : "Enter LonelyGirl") : "Continue"}
             </button>
-            {step === 6 ? (
+            {step === 7 ? (
               <button
                 type="button"
                 onClick={() => {

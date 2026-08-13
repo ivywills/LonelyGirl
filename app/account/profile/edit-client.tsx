@@ -152,13 +152,14 @@ export default function EditProfile({ profile }: { profile: OwnProfile }) {
           {/*
             The sticky header's back arrow is easy to miss against the dark bar,
             and the pastel card reads as the whole screen. This gives the card
-            its own way out, in the corner people already look for one.
+            its own way out — same header row as onboarding: back circle on the
+            left, a little pill on the right.
           */}
-          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: -6, marginBottom: 2 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: -6, marginBottom: 16 }}>
             <Link
               href="/account"
-              aria-label="Close profile"
-              title="Close"
+              aria-label="Back to your account"
+              title="Back"
               style={{
                 width: 30,
                 height: 30,
@@ -166,16 +167,33 @@ export default function EditProfile({ profile }: { profile: OwnProfile }) {
                 display: "inline-flex",
                 alignItems: "center",
                 justifyContent: "center",
+                background: T.paper,
                 border: `1.5px solid ${T.tan2}`,
                 color: T.muted,
-                fontSize: 16,
+                fontSize: 15,
                 lineHeight: 1,
                 textDecoration: "none",
                 flex: "none",
               }}
             >
-              ×
+              ←
             </Link>
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 5,
+                padding: "4px 11px",
+                borderRadius: 999,
+                background: T.butterTint,
+                color: T.ink,
+                fontSize: 12,
+                fontWeight: 700,
+                letterSpacing: ".02em",
+              }}
+            >
+              your profile
+            </span>
           </div>
 
           <Section label="Name">
