@@ -908,13 +908,10 @@ export default function EventsClient({
             </div>
           );
         })}
-        {shown.length === 0 && (
+        {/* Calendar view already says "N events" in its count line */}
+        {shown.length === 0 && view === "list" && (
           <p style={{ color: "var(--muted)", fontSize: 14 }}>
-            {view === "calendar"
-              ? selectedDay
-                ? "Nothing on this day."
-                : "Nothing this month."
-              : "No events here yet — check back soon."}
+            No events here yet — check back soon.
           </p>
         )}
       </div>
