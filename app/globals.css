@@ -1065,7 +1065,10 @@ body {
   display: flex;
   gap: 16px;
   overflow-x: auto;
-  padding: 2px 2px 14px;
+  /* overflow-x also clips vertically, so the hover lift (-7px) needs top
+     padding to rise into — the negative margin keeps the rail's visual gap. */
+  padding: 10px 2px 14px;
+  margin-top: -8px;
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--accent) 40%, transparent) transparent;
 }

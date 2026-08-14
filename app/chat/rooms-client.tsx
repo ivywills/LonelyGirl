@@ -20,6 +20,12 @@ export type Room = {
   welcome_message: string;
   /** Which rail the room shows up in. Sectionless rooms fall into "More rooms". */
   section_id: string | null;
+  /**
+   * Set when an admin hides the room. RLS keeps hidden rooms out of every
+   * non-admin query (supabase/room-archive.sql), so only admins ever receive
+   * a row with this set — it lands in the Archive rail instead of the grid.
+   */
+  hidden_at?: string | null;
 };
 
 /** A rail on the directory — see supabase/room-sections.sql. */
@@ -29,6 +35,8 @@ export type Section = {
   subtitle: string;
   icon: string;
   sort_order: number;
+  /** Set when an admin archives the whole rail — see supabase/room-archive.sql. */
+  hidden_at?: string | null;
 };
 
 /** Latest message in a room. Only readable for rooms you've joined (RLS). */
@@ -505,6 +513,11 @@ export default function ChatDirectory({
   const [sectionSubtitle, setSectionSubtitle] = useState("");
   const [sectionIcon, setSectionIcon] = useState(SECTION_ICONS[0]);
 
+  // Which rail is being renamed inline (admin), and its draft values
+  const [editingSection, setEditingSection] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editSubtitle, setEditSubtitle] = useState("");
+
   // Relative "active now" labels are time-dependent, so they wait for mount
   const [now, setNow] = useState<number | null>(null);
   useEffect(() => setNow(Date.now()), []);
@@ -586,7 +599,12 @@ export default function ChatDirectory({
   const q = query.trim().toLowerCase();
   const filtering = q.length > 0 || !!mood || scope !== "all";
 
+  // Hidden rooms never join the grid or search — admins manage them from the
+  // Archive rail below instead. (Non-admins never receive them at all — RLS.)
+  const archived = rooms.filter((r) => r.hidden_at);
+
   const visible = base.filter((r) => {
+    if (r.hidden_at) return false;
     const matchesQuery =
       !q ||
       r.name.toLowerCase().includes(q) ||
@@ -603,18 +621,20 @@ export default function ChatDirectory({
     return matchesQuery && matchesMood && matchesScope;
   });
 
-  // One rail per section, in sort order, then everything sectionless
+  // One rail per section, in sort order, then everything sectionless.
+  // Archived sections don't get a rail — they live in the Archive below.
+  const liveSections = sections.filter((s) => !s.hidden_at);
   const grouped = new Map<string, Room[]>();
   const loose: Room[] = [];
   visible.forEach((r) => {
-    if (r.section_id && sections.some((s) => s.id === r.section_id)) {
+    if (r.section_id && liveSections.some((s) => s.id === r.section_id)) {
       grouped.set(r.section_id, [...(grouped.get(r.section_id) ?? []), r]);
     } else {
       loose.push(r);
     }
   });
   const rails: { section: Section | null; rooms: Room[] }[] = [
-    ...[...sections]
+    ...[...liveSections]
       .sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name))
       .map((s) => ({ section: s, rooms: grouped.get(s.id) ?? [] })),
     ...(loose.length > 0 ? [{ section: null, rooms: loose }] : []),
@@ -718,6 +738,112 @@ export default function ChatDirectory({
     setRooms(unlink);
     setRemote((prev) => (prev ? unlink(prev) : prev));
     if (sectionId === s.id) setSectionId("");
+  }
+
+  /*
+   * Hide/restore is one nullable timestamp, so "bring it back" restores the
+   * room exactly as it was — members, messages and settings untouched.
+   */
+  async function setHidden(r: Room, hidden: boolean) {
+    if (
+      hidden &&
+      !confirm(`Hide "${r.name}"? It disappears for everyone except admins — you can bring it back from the archive at the bottom of this page.`)
+    )
+      return;
+    setError("");
+    const hiddenAt = hidden ? new Date().toISOString() : null;
+    const supabase = createClient();
+    const { error: err } = await supabase.from("chat_rooms").update({ hidden_at: hiddenAt }).eq("id", r.id);
+    if (err) {
+      setError(err.message);
+      return;
+    }
+    const mark = (list: Room[]) => list.map((x) => (x.id === r.id ? { ...x, hidden_at: hiddenAt } : x));
+    setRooms(mark);
+    setRemote((prev) => (prev ? mark(prev) : prev));
+  }
+
+  /*
+   * Archiving a rail stamps the SAME timestamp on the section and every
+   * not-already-hidden room in it. Restoring only clears rooms carrying that
+   * exact stamp, so a room hidden on its own beforehand stays hidden.
+   */
+  async function hideSection(s: Section) {
+    const count = rooms.filter((r) => r.section_id === s.id && !r.hidden_at).length;
+    if (
+      !confirm(
+        `Archive "${s.name}"${count ? ` and its ${count} room${count === 1 ? "" : "s"}` : ""}? It all disappears for everyone except admins — restore it from the archive at the bottom of this page.`
+      )
+    )
+      return;
+    setError("");
+    const stamp = new Date().toISOString();
+    const supabase = createClient();
+    const { error: roomErr } = await supabase
+      .from("chat_rooms")
+      .update({ hidden_at: stamp })
+      .eq("section_id", s.id)
+      .is("hidden_at", null);
+    if (roomErr) {
+      setError(roomErr.message);
+      return;
+    }
+    const { error: secErr } = await supabase.from("room_sections").update({ hidden_at: stamp }).eq("id", s.id);
+    if (secErr) {
+      setError(secErr.message);
+      return;
+    }
+    const mark = (list: Room[]) =>
+      list.map((x) => (x.section_id === s.id && !x.hidden_at ? { ...x, hidden_at: stamp } : x));
+    setRooms(mark);
+    setRemote((prev) => (prev ? mark(prev) : prev));
+    setSections((prev) => prev.map((x) => (x.id === s.id ? { ...x, hidden_at: stamp } : x)));
+  }
+
+  async function restoreSection(s: Section) {
+    if (!s.hidden_at) return;
+    setError("");
+    const supabase = createClient();
+    const { error: roomErr } = await supabase
+      .from("chat_rooms")
+      .update({ hidden_at: null })
+      .eq("section_id", s.id)
+      .eq("hidden_at", s.hidden_at);
+    if (roomErr) {
+      setError(roomErr.message);
+      return;
+    }
+    const { error: secErr } = await supabase.from("room_sections").update({ hidden_at: null }).eq("id", s.id);
+    if (secErr) {
+      setError(secErr.message);
+      return;
+    }
+    const clear = (list: Room[]) =>
+      list.map((x) => (x.section_id === s.id && x.hidden_at === s.hidden_at ? { ...x, hidden_at: null } : x));
+    setRooms(clear);
+    setRemote((prev) => (prev ? clear(prev) : prev));
+    setSections((prev) => prev.map((x) => (x.id === s.id ? { ...x, hidden_at: null } : x)));
+  }
+
+  async function saveSectionEdit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editingSection || !editName.trim()) return;
+    setBusy(true);
+    setError("");
+    const supabase = createClient();
+    const { error: err } = await supabase
+      .from("room_sections")
+      .update({ name: editName.trim(), subtitle: editSubtitle.trim() })
+      .eq("id", editingSection);
+    setBusy(false);
+    if (err) {
+      setError(err.message);
+      return;
+    }
+    setSections((prev) =>
+      prev.map((x) => (x.id === editingSection ? { ...x, name: editName.trim(), subtitle: editSubtitle.trim() } : x))
+    );
+    setEditingSection(null);
   }
 
   return (
@@ -905,7 +1031,7 @@ export default function ChatDirectory({
                 }}
               >
                 <option value="">No section — show under “More rooms”</option>
-                {[...sections]
+                {[...liveSections]
                   .sort((a, b) => a.sort_order - b.sort_order)
                   .map((s) => (
                     <option key={s.id} value={s.id}>
@@ -1040,57 +1166,161 @@ export default function ChatDirectory({
               className="lg-rail"
               style={{ animationDelay: `${Math.min(i, 6) * 90}ms` }}
             >
-              <div style={{ display: "flex", alignItems: "baseline", gap: 9 }}>
-                <span className="msr" style={{ fontSize: 20, color: "var(--accent)" }} aria-hidden>
-                  {s?.icon ?? "grid_view"}
-                </span>
-                <h3 className="lg-serif" style={{ fontSize: 22, fontWeight: 600, margin: 0 }}>
-                  {s?.name ?? "More rooms"}
-                </h3>
-                {isAdmin && (
-                  <span style={{ marginLeft: "auto", display: "flex", gap: 6, alignSelf: "center" }}>
-                    <button
-                      type="button"
-                      style={ghostIconBtn}
-                      onClick={() => openCreate(s?.id ?? null)}
-                      title={s ? `Add a room to “${s.name}”` : "Add a room with no section"}
-                      aria-label={s ? `Add a room to ${s.name}` : "Add a room with no section"}
-                    >
-                      <span className="msr" style={{ fontSize: 17 }} aria-hidden>
-                        add
+              {s && editingSection === s.id ? (
+                <form
+                  onSubmit={saveSectionEdit}
+                  style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", margin: "0 0 14px" }}
+                >
+                  <span className="msr" style={{ fontSize: 20, color: "var(--accent)" }} aria-hidden>
+                    {s.icon}
+                  </span>
+                  <input
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    maxLength={60}
+                    required
+                    autoFocus
+                    aria-label="Section title"
+                    style={{ width: "auto", flex: "1 1 160px", marginBottom: 0 }}
+                  />
+                  <input
+                    value={editSubtitle}
+                    onChange={(e) => setEditSubtitle(e.target.value)}
+                    maxLength={80}
+                    placeholder="subtitle"
+                    aria-label="Section subtitle"
+                    style={{ width: "auto", flex: "1 1 160px", marginBottom: 0 }}
+                  />
+                  <button className="primary" type="submit" disabled={busy} style={{ width: "auto", padding: "8px 16px", fontSize: 13 }}>
+                    {busy ? "Saving…" : "Save"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditingSection(null)}
+                    style={{ width: "auto", padding: "8px 14px", fontSize: 13, background: "var(--card)", color: "var(--muted)", border: "1px solid var(--border)" }}
+                  >
+                    Cancel
+                  </button>
+                </form>
+              ) : (
+                <>
+                  <div style={{ display: "flex", alignItems: "baseline", gap: 9 }}>
+                    <span className="msr" style={{ fontSize: 20, color: "var(--accent)" }} aria-hidden>
+                      {s?.icon ?? "grid_view"}
+                    </span>
+                    <h3 className="lg-serif" style={{ fontSize: 22, fontWeight: 600, margin: 0 }}>
+                      {s?.name ?? "More rooms"}
+                    </h3>
+                    {isAdmin && (
+                      <span style={{ marginLeft: "auto", display: "flex", gap: 6, alignSelf: "center" }}>
+                        <button
+                          type="button"
+                          style={ghostIconBtn}
+                          onClick={() => openCreate(s?.id ?? null)}
+                          title={s ? `Add a room to “${s.name}”` : "Add a room with no section"}
+                          aria-label={s ? `Add a room to ${s.name}` : "Add a room with no section"}
+                        >
+                          <span className="msr" style={{ fontSize: 17 }} aria-hidden>
+                            add
+                          </span>
+                        </button>
+                        {s && (
+                          <>
+                            <button
+                              type="button"
+                              style={ghostIconBtn}
+                              onClick={() => {
+                                setEditingSection(s.id);
+                                setEditName(s.name);
+                                setEditSubtitle(s.subtitle);
+                              }}
+                              title={`Rename “${s.name}”`}
+                              aria-label={`Rename the ${s.name} section`}
+                            >
+                              <span className="msr" style={{ fontSize: 17 }} aria-hidden>
+                                edit
+                              </span>
+                            </button>
+                            <button
+                              type="button"
+                              style={ghostIconBtn}
+                              onClick={() => hideSection(s)}
+                              title={`Archive “${s.name}” and its rooms`}
+                              aria-label={`Archive the ${s.name} section and its rooms`}
+                            >
+                              <span className="msr" style={{ fontSize: 17 }} aria-hidden>
+                                visibility_off
+                              </span>
+                            </button>
+                            <button
+                              type="button"
+                              style={ghostIconBtn}
+                              onClick={() => deleteSection(s)}
+                              title={`Delete the “${s.name}” section`}
+                              aria-label={`Delete the ${s.name} section`}
+                            >
+                              <span className="msr" style={{ fontSize: 17 }} aria-hidden>
+                                delete
+                              </span>
+                            </button>
+                          </>
+                        )}
                       </span>
-                    </button>
-                    {s && (
+                    )}
+                  </div>
+                  <p style={{ margin: "2px 0 14px 29px", fontSize: 13, color: "var(--muted)" }}>
+                    {s ? s.subtitle : "everything else"}
+                  </p>
+                </>
+              )}
+              <div className="lg-rail-scroll">
+                {rail.rooms.map((r) => {
+                  const card = (
+                    <RoomCard
+                      key={isAdmin ? undefined : r.id}
+                      room={r}
+                      joined={memberRoomIds.includes(r.id)}
+                      pending={pendingRoomIds.includes(r.id)}
+                      members={memberCounts[r.id] ?? 0}
+                      activity={lastMessages[r.id]}
+                      now={now}
+                    />
+                  );
+                  if (!isAdmin) return card;
+                  // The button sits outside the card's Link so tapping it
+                  // never navigates into the room.
+                  return (
+                    <div key={r.id} style={{ position: "relative", flex: "none" }}>
+                      {card}
                       <button
                         type="button"
-                        style={ghostIconBtn}
-                        onClick={() => deleteSection(s)}
-                        title={`Delete the “${s.name}” section`}
-                        aria-label={`Delete the ${s.name} section`}
+                        onClick={() => setHidden(r, true)}
+                        title="Hide from users"
+                        aria-label={`Hide ${r.name} from users`}
+                        style={{
+                          position: "absolute",
+                          top: 8,
+                          right: 8,
+                          width: 28,
+                          height: 28,
+                          padding: 0,
+                          borderRadius: "50%",
+                          background: "rgba(19,19,22,.55)",
+                          border: "none",
+                          color: "#fff",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          cursor: "pointer",
+                        }}
                       >
-                        <span className="msr" style={{ fontSize: 17 }} aria-hidden>
-                          delete
+                        <span className="msr" style={{ fontSize: 15 }} aria-hidden>
+                          visibility_off
                         </span>
                       </button>
-                    )}
-                  </span>
-                )}
-              </div>
-              <p style={{ margin: "2px 0 14px 29px", fontSize: 13, color: "var(--muted)" }}>
-                {s ? s.subtitle : "everything else"}
-              </p>
-              <div className="lg-rail-scroll">
-                {rail.rooms.map((r) => (
-                  <RoomCard
-                    key={r.id}
-                    room={r}
-                    joined={memberRoomIds.includes(r.id)}
-                    pending={pendingRoomIds.includes(r.id)}
-                    members={memberCounts[r.id] ?? 0}
-                    activity={lastMessages[r.id]}
-                    now={now}
-                  />
-                ))}
+                    </div>
+                  );
+                })}
                 {rail.rooms.length === 0 && (
                   <p style={{ fontSize: 13, color: "var(--muted)", padding: "18px 2px" }}>
                     Nothing in here yet — use + to add the first room.
@@ -1138,6 +1368,88 @@ export default function ChatDirectory({
             </span>
             New section
           </button>
+        )}
+
+        {/* Admin-only archive: hidden rails and rooms, each one restore away. */}
+        {isAdmin && (archived.length > 0 || sections.some((s) => s.hidden_at)) && (
+          <section style={{ marginTop: 44 }}>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 9 }}>
+              <span className="msr" style={{ fontSize: 20, color: "var(--muted)" }} aria-hidden>
+                inventory_2
+              </span>
+              <h3 className="lg-serif" style={{ fontSize: 22, fontWeight: 600, margin: 0 }}>
+                Archive
+              </h3>
+            </div>
+            <p style={{ margin: "2px 0 14px 29px", fontSize: 13, color: "var(--muted)" }}>
+              hidden from everyone but admins — restore to put something back
+            </p>
+            <div style={{ display: "flex", flexDirection: "column" }}>
+              {sections
+                .filter((s) => s.hidden_at)
+                .map((s) => {
+                  const roomCount = rooms.filter((r) => r.section_id === s.id && r.hidden_at === s.hidden_at).length;
+                  return (
+                    <div
+                      key={s.id}
+                      style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 2px", borderBottom: "1px solid var(--border)" }}
+                    >
+                      <span className="msr" style={{ fontSize: 17, color: "var(--muted)" }} aria-hidden>
+                        {s.icon}
+                      </span>
+                      <span style={{ fontSize: 14, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {s.name}
+                      </span>
+                      <span style={{ fontSize: 12, color: "var(--muted)", whiteSpace: "nowrap" }}>
+                        section · {roomCount} room{roomCount === 1 ? "" : "s"}
+                        {now && s.hidden_at ? ` · hidden ${new Date(s.hidden_at).toLocaleDateString()}` : ""}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => restoreSection(s)}
+                        style={{ ...textBtn, marginLeft: "auto", color: "var(--accent)", textDecoration: "underline", textUnderlineOffset: 3, whiteSpace: "nowrap" }}
+                      >
+                        Restore
+                      </button>
+                    </div>
+                  );
+                })}
+              {archived
+                .filter((r) => {
+                  // Rooms swept up in a section archive are covered by the
+                  // section's own row above.
+                  const sec = sections.find((s) => s.id === r.section_id);
+                  return !(sec?.hidden_at && sec.hidden_at === r.hidden_at);
+                })
+                .map((r) => (
+                  <div
+                    key={r.id}
+                    style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 2px", borderBottom: "1px solid var(--border)" }}
+                  >
+                    <span
+                      aria-hidden
+                      style={{ width: 17, height: 17, borderRadius: 5, flex: "none", background: roomSurface(r.bg_color).bg }}
+                    />
+                    <Link
+                      href={`/chat/${r.id}`}
+                      style={{ fontSize: 14, color: "inherit", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                    >
+                      {r.name}
+                    </Link>
+                    <span style={{ fontSize: 12, color: "var(--muted)", whiteSpace: "nowrap" }}>
+                      {now && r.hidden_at ? `hidden ${new Date(r.hidden_at).toLocaleDateString()}` : ""}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setHidden(r, false)}
+                      style={{ ...textBtn, marginLeft: "auto", color: "var(--accent)", textDecoration: "underline", textUnderlineOffset: 3, whiteSpace: "nowrap" }}
+                    >
+                      Restore
+                    </button>
+                  </div>
+                ))}
+            </div>
+          </section>
         )}
       </main>
     </>
