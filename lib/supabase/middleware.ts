@@ -36,9 +36,10 @@ export async function updateSession(request: NextRequest) {
   /*
    * Areas that need an account. Anything not listed (/, /waitlist, /login,
    * /signup, /auth/*) stays open — the Instagram bio link has to work without
-   * one.
+   * one. /events is open too: browsing is public, and the page itself asks
+   * for sign-in only when she tries to book or host.
    */
-  const GUARDED = ["/account", "/chat", "/events", "/playlists", "/scrapbook", "/shop"];
+  const GUARDED = ["/account", "/chat", "/playlists", "/scrapbook", "/shop"];
   const isGuarded = GUARDED.some((p) => path.startsWith(p));
 
   // Protect signed-in areas: redirect signed-out users to /login

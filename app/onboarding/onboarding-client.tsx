@@ -482,6 +482,14 @@ export default function Onboarding({
             >
               {step === 0 ? "Let's go" : step === STEPS - 1 ? (pending ? "Saving…" : "Enter LonelyGirl") : "Continue"}
             </button>
+            {step === 0 ? (
+              <a
+                href="/"
+                style={{ color: T.muted, fontSize: 13, textDecoration: "underline", whiteSpace: "nowrap" }}
+              >
+                Continue as guest
+              </a>
+            ) : null}
             {step === 7 ? (
               <button
                 type="button"

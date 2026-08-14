@@ -300,7 +300,7 @@ export default function TvWall({ signedIn }: { signedIn: boolean }) {
   }, []);
 
   const scene = sceneKey ? SCENES[sceneKey] : null;
-  const tvs: (typeof SCENES)["wide"]["tvs"] = scene ? scene.tvs : [];
+  const tvs: (typeof SCENES)[keyof typeof SCENES]["tvs"] = scene ? scene.tvs : [];
 
   const signedInRef = useRef(signedIn);
   signedInRef.current = signedIn;

@@ -43,8 +43,6 @@ export const EVENT_CATEGORIES: [string, string][] = [
 
 const catIcon = (c: string) => EVENT_CATEGORIES.find(([name]) => name === c)?.[1] ?? "event";
 
-const WOMEN_PINK = "#ef99c2";
-
 function formatWhen(iso: string): string {
   const d = new Date(iso);
   const date = d.toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" });
@@ -288,10 +286,11 @@ export default function EventsClient({
       </PageHeader>
       <main style={{ maxWidth: 860, margin: "0 auto", padding: "28px 20px 60px", width: "100%" }}>
       <p style={{ color: "var(--muted)", fontSize: 14, marginBottom: 18 }}>
-        <span className="msr" style={{ fontSize: 15, color: WOMEN_PINK, marginRight: 4 }} aria-hidden>
-          female
+        <span className="msr" style={{ fontSize: 15, marginRight: 4 }} aria-hidden>
+          event_upcoming
         </span>
-        Find something to go to, book a spot, or host your own. Every event here is women-only.
+        Events are coming soon — this is where you&apos;ll find something to go to, book a spot,
+        or host your own.
       </p>
 
       {error && <p className="msg-error">{error}</p>}
@@ -394,20 +393,6 @@ export default function EventsClient({
               />
             ))}
           </div>
-          <p
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-              marginBottom: 16,
-              fontSize: 13,
-            }}
-          >
-            <span className="msr" style={{ fontSize: 16, color: WOMEN_PINK }} aria-hidden>
-              female
-            </span>
-            Just so you know — every event on here is women-only.
-          </p>
           <button className="primary" disabled={busy || uploading} type="submit">
             {busy ? "Creating…" : uploading ? "Waiting for upload…" : "Create event"}
           </button>
