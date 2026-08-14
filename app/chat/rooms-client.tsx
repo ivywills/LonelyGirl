@@ -518,6 +518,21 @@ export default function ChatDirectory({
   const [editName, setEditName] = useState("");
   const [editSubtitle, setEditSubtitle] = useState("");
 
+  /*
+   * Phone-only: which rail's ⋮ menu is open ("loose" for the sectionless
+   * rail). On desktop the actions sit inline; on a phone they'd force the
+   * rail title onto two lines, so they collapse behind one button.
+   */
+  const [railMenu, setRailMenu] = useState<string | null>(null);
+  useEffect(() => {
+    if (!railMenu) return;
+    // Attached after the opening click has finished bubbling, so any next
+    // click — a menu item, another kebab, anywhere — closes the menu.
+    const close = () => setRailMenu(null);
+    document.addEventListener("click", close);
+    return () => document.removeEventListener("click", close);
+  }, [railMenu]);
+
   // Relative "active now" labels are time-dependent, so they wait for mount
   const [now, setNow] = useState<number | null>(null);
   useEffect(() => setNow(Date.now()), []);
@@ -550,6 +565,15 @@ export default function ChatDirectory({
   }, []);
 
   const moodTags = useMemo(() => MOODS.find((m) => m.label === mood)?.tags ?? [], [mood]);
+
+  // A feeling chip with zero matching rooms is a dead end — don't offer it.
+  const shownMoods = useMemo(
+    () =>
+      MOODS.filter((m) =>
+        rooms.some((r) => !r.hidden_at && r.tags?.some((t) => m.tags.includes(t.toLowerCase())))
+      ),
+    [rooms]
+  );
 
   // Server-side search across ALL rooms (not just the first page loaded)
   useEffect(() => {
@@ -953,7 +977,7 @@ export default function ChatDirectory({
             </div>
           </div>
           <div className="lg-chip-row">
-            {MOODS.map((m) => {
+            {shownMoods.map((m) => {
               const s = roomSurface(m.color);
               const active = mood === m.label;
               return (
@@ -1211,62 +1235,92 @@ export default function ChatDirectory({
                     <h3 className="lg-serif" style={{ fontSize: 22, fontWeight: 600, margin: 0 }}>
                       {s?.name ?? "More rooms"}
                     </h3>
-                    {isAdmin && (
-                      <span style={{ marginLeft: "auto", display: "flex", gap: 6, alignSelf: "center" }}>
-                        <button
-                          type="button"
-                          style={ghostIconBtn}
-                          onClick={() => openCreate(s?.id ?? null)}
-                          title={s ? `Add a room to “${s.name}”` : "Add a room with no section"}
-                          aria-label={s ? `Add a room to ${s.name}` : "Add a room with no section"}
-                        >
-                          <span className="msr" style={{ fontSize: 17 }} aria-hidden>
-                            add
-                          </span>
-                        </button>
-                        {s && (
-                          <>
-                            <button
-                              type="button"
-                              style={ghostIconBtn}
-                              onClick={() => {
-                                setEditingSection(s.id);
-                                setEditName(s.name);
-                                setEditSubtitle(s.subtitle);
+                    {isAdmin && (() => {
+                      const menuKey = s?.id ?? "loose";
+                      const actions: { icon: string; label: string; run: () => void }[] = [
+                        {
+                          icon: "add",
+                          label: s ? "Add a room" : "Add a room here",
+                          run: () => openCreate(s?.id ?? null),
+                        },
+                        ...(s
+                          ? [
+                              {
+                                icon: "edit",
+                                label: "Rename",
+                                run: () => {
+                                  setEditingSection(s.id);
+                                  setEditName(s.name);
+                                  setEditSubtitle(s.subtitle);
+                                },
+                              },
+                              { icon: "visibility_off", label: "Archive", run: () => hideSection(s) },
+                              { icon: "delete", label: "Delete", run: () => deleteSection(s) },
+                            ]
+                          : []),
+                      ];
+                      return (
+                        <span style={{ marginLeft: "auto", display: "flex", gap: 6, alignSelf: "center", position: "relative" }}>
+                          {/* One ⋮ at every width, so the rail title keeps its room */}
+                          <button
+                            type="button"
+                            style={ghostIconBtn}
+                            onClick={() => setRailMenu((v) => (v === menuKey ? null : menuKey))}
+                            aria-expanded={railMenu === menuKey}
+                            aria-label={s ? `Actions for ${s.name}` : "Actions for this rail"}
+                          >
+                            <span className="msr" style={{ fontSize: 17 }} aria-hidden>
+                              more_vert
+                            </span>
+                          </button>
+                          {railMenu === menuKey && (
+                            <div
+                              style={{
+                                position: "absolute",
+                                top: 34,
+                                right: 0,
+                                zIndex: 30,
+                                display: "flex",
+                                flexDirection: "column",
+                                minWidth: 170,
+                                padding: 6,
+                                background: "var(--card)",
+                                border: "1px solid var(--border)",
+                                borderRadius: 12,
+                                boxShadow: "0 14px 34px var(--lift)",
                               }}
-                              title={`Rename “${s.name}”`}
-                              aria-label={`Rename the ${s.name} section`}
                             >
-                              <span className="msr" style={{ fontSize: 17 }} aria-hidden>
-                                edit
-                              </span>
-                            </button>
-                            <button
-                              type="button"
-                              style={ghostIconBtn}
-                              onClick={() => hideSection(s)}
-                              title={`Archive “${s.name}” and its rooms`}
-                              aria-label={`Archive the ${s.name} section and its rooms`}
-                            >
-                              <span className="msr" style={{ fontSize: 17 }} aria-hidden>
-                                visibility_off
-                              </span>
-                            </button>
-                            <button
-                              type="button"
-                              style={ghostIconBtn}
-                              onClick={() => deleteSection(s)}
-                              title={`Delete the “${s.name}” section`}
-                              aria-label={`Delete the ${s.name} section`}
-                            >
-                              <span className="msr" style={{ fontSize: 17 }} aria-hidden>
-                                delete
-                              </span>
-                            </button>
-                          </>
-                        )}
-                      </span>
-                    )}
+                              {actions.map((a) => (
+                                <button
+                                  key={a.icon}
+                                  type="button"
+                                  onClick={a.run}
+                                  style={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: 9,
+                                    width: "100%",
+                                    padding: "9px 10px",
+                                    background: "transparent",
+                                    border: "none",
+                                    borderRadius: 8,
+                                    color: "var(--text)",
+                                    fontSize: 13.5,
+                                    textAlign: "left",
+                                    cursor: "pointer",
+                                  }}
+                                >
+                                  <span className="msr" style={{ fontSize: 17, color: "var(--muted)" }} aria-hidden>
+                                    {a.icon}
+                                  </span>
+                                  {a.label}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </span>
+                      );
+                    })()}
                   </div>
                   <p style={{ margin: "2px 0 14px 29px", fontSize: 13, color: "var(--muted)" }}>
                     {s ? s.subtitle : "everything else"}

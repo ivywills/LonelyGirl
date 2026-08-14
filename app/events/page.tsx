@@ -13,11 +13,18 @@ export default async function EventsPage() {
   // from Instagram to make an account, so they need to see it first. Reading
   // is open (anon select policy in supabase/public-read.sql); booking and
   // hosting still require an account.
-  const { data: events } = await supabase
-    .from("events")
-    .select("*")
-    .order("starts_at", { ascending: true })
-    .limit(200);
+  const [{ data: events }, { data: adminRow }] = await Promise.all([
+    supabase
+      .from("events")
+      .select("*")
+      .order("starts_at", { ascending: true })
+      .limit(200),
+    // Hosting is admin-only. This shows/hides the button; the rule itself is
+    // RLS (supabase/events-admin.sql), so a forged answer grants nothing.
+    user
+      ? supabase.from("admins").select("user_id").eq("user_id", user.id).maybeSingle()
+      : Promise.resolve({ data: null }),
+  ]);
 
   const ids = (events ?? []).map((e) => e.id);
 
@@ -64,6 +71,7 @@ export default async function EventsPage() {
       initialAttendees={attendees}
       userId={user?.id ?? null}
       displayName={displayName}
+      isAdmin={!!adminRow}
     />
   );
 }

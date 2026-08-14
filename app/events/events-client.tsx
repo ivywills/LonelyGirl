@@ -43,6 +43,11 @@ export const EVENT_CATEGORIES: [string, string][] = [
 
 const catIcon = (c: string) => EVENT_CATEGORIES.find(([name]) => name === c)?.[1] ?? "event";
 
+/** Local-time day bucket, "YYYY-MM-DD" — the calendar's key for everything. */
+function dayKey(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 function formatWhen(iso: string): string {
   const d = new Date(iso);
   const date = d.toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" });
@@ -94,6 +99,7 @@ export default function EventsClient({
   initialAttendees,
   userId,
   displayName,
+  isAdmin = false,
 }: {
   events: EventRow[];
   initialAttendees: Attendee[];
@@ -101,11 +107,19 @@ export default function EventsClient({
   // below bails early and the UI offers sign-in instead of the action.
   userId: string | null;
   displayName: string;
+  /** Hosting is admin-only — RLS in supabase/events-admin.sql is the rule. */
+  isAdmin?: boolean;
 }) {
   const [attendees, setAttendees] = useState<Attendee[]>(initialAttendees);
   const [query, setQuery] = useState("");
-  const [scope, setScope] = useState<"upcoming" | "booked" | "hosting" | "past">("upcoming");
-  const [activeCat, setActiveCat] = useState<string | null>(null);
+  const [scope, setScope] = useState<"upcoming" | "booked" | "past">("upcoming");
+  const [view, setView] = useState<"list" | "calendar">("list");
+  // First of the month the calendar is showing, and the tapped day ("YYYY-MM-DD")
+  const [calMonth, setCalMonth] = useState(() => {
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth(), 1);
+  });
+  const [selectedDay, setSelectedDay] = useState<string | null>(null);
   // Phone-only: whether the collapsed scope row is showing
   const [showScope, setShowScope] = useState(false);
   /*
@@ -147,11 +161,6 @@ export default function EventsClient({
     [attendees, userId]
   );
 
-  const usedCats = useMemo(() => {
-    const s = new Set(localEvents.map((e) => e.category));
-    return EVENT_CATEGORIES.filter(([name]) => s.has(name)).map(([name]) => name);
-  }, [localEvents]);
-
   const now = Date.now();
   const visible = localEvents
     .filter((e) => {
@@ -162,20 +171,45 @@ export default function EventsClient({
         e.description?.toLowerCase().includes(q) ||
         e.location?.toLowerCase().includes(q) ||
         e.category.includes(q);
-      const matchesCat = !activeCat || e.category === activeCat;
       const isPast = new Date(e.starts_at).getTime() < now;
       const matchesScope =
         (scope === "upcoming" && !isPast) ||
         (scope === "booked" && myBookings.has(e.id)) ||
-        (scope === "hosting" && e.creator_id === userId) ||
         (scope === "past" && isPast);
-      return matchesQuery && matchesCat && matchesScope;
+      return matchesQuery && matchesScope;
     })
     .sort((a, b) =>
       scope === "past"
         ? b.starts_at.localeCompare(a.starts_at)
         : a.starts_at.localeCompare(b.starts_at)
     );
+
+  // Calendar bookkeeping: events bucketed by local day
+  const eventsByDay = useMemo(() => {
+    const map = new Map<string, EventRow[]>();
+    localEvents.forEach((e) => {
+      const k = dayKey(new Date(e.starts_at));
+      map.set(k, [...(map.get(k) ?? []), e]);
+    });
+    map.forEach((list) => list.sort((a, b) => a.starts_at.localeCompare(b.starts_at)));
+    return map;
+  }, [localEvents]);
+
+  const calYear = calMonth.getFullYear();
+  const calMon = calMonth.getMonth();
+  const monthEvents = useMemo(
+    () =>
+      localEvents
+        .filter((e) => {
+          const d = new Date(e.starts_at);
+          return d.getFullYear() === calYear && d.getMonth() === calMon;
+        })
+        .sort((a, b) => a.starts_at.localeCompare(b.starts_at)),
+    [localEvents, calYear, calMon]
+  );
+  // What the card grid shows: the tapped day, else the whole month on screen
+  const calVisible = selectedDay ? (eventsByDay.get(selectedDay) ?? []) : monthEvents;
+  const shown = view === "calendar" ? calVisible : visible;
 
   async function book(e: EventRow) {
     if (!userId) return;
@@ -267,35 +301,21 @@ export default function EventsClient({
         backHref="/"
         backLabel="change the channel"
       >
-        {/* Hidden on phones, like the chat directory's create button */}
-        {userId ? (
+        {/* Hidden on phones, like the chat directory's create button.
+            Hosting is admin-only, so everyone else gets no CTA at all. */}
+        {isAdmin && (
           <button type="button" className="lg-cta lg-hide-narrow" onClick={() => setCreating((v) => !v)}>
             <span className="msr" style={{ fontSize: 18 }} aria-hidden>
               {creating ? "close" : "add_circle"}
             </span>
             {creating ? "Close" : "Host an event"}
           </button>
-        ) : (
-          <a className="lg-cta lg-hide-narrow" href="/login?next=/events">
-            <span className="msr" style={{ fontSize: 18 }} aria-hidden>
-              login
-            </span>
-            Sign in to host
-          </a>
         )}
       </PageHeader>
       <main style={{ maxWidth: 860, margin: "0 auto", padding: "28px 20px 60px", width: "100%" }}>
-      <p style={{ color: "var(--muted)", fontSize: 14, marginBottom: 18 }}>
-        <span className="msr" style={{ fontSize: 15, marginRight: 4 }} aria-hidden>
-          event_upcoming
-        </span>
-        Events are coming soon — this is where you&apos;ll find something to go to, book a spot,
-        or host your own.
-      </p>
-
       {error && <p className="msg-error">{error}</p>}
 
-      {creating && (
+      {creating && isAdmin && (
         <form
           onSubmit={createEvent}
           className="card on-room"
@@ -399,112 +419,265 @@ export default function EventsClient({
         </form>
       )}
 
-      <input
-        placeholder={narrow ? "Search events" : "Search events by title, place or description..."}
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        aria-label="Search events"
-        style={{ marginBottom: 10 }}
-      />
-      <div className="lg-filter-head">
-        {/* Phone-only: the scope pills live behind this until tapped */}
-        <button
-          type="button"
-          className="lg-filter-btn"
-          onClick={() => setShowScope((v) => !v)}
-          aria-expanded={showScope}
-          aria-label={scope === "upcoming" ? "Filter events" : `Filter events — showing ${scope}`}
-          title="Filter events"
-        >
-          <span className="msr" style={{ fontSize: 18 }} aria-hidden>
-            tune
-          </span>
-          {scope !== "upcoming" && <span className="lg-filter-dot" aria-hidden />}
-        </button>
-        <div className={`lg-scope-row lg-scope-row--start${showScope ? " open" : ""}`}>
+      {/* List ↔ calendar switch */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
         {(
           [
-            ["upcoming", "Upcoming"],
-            ["booked", "Booked"],
-            ["hosting", "Hosting"],
-            ["past", "Past"],
-          ] as [typeof scope, string][]
-        ).map(([key, label]) => (
+            ["list", "view_agenda", "List"],
+            ["calendar", "calendar_month", "Calendar"],
+          ] as const
+        ).map(([key, icon, label]) => (
           <button
             key={key}
-            onClick={() => {
-              setScope(key);
-              setShowScope(false);
-            }}
+            type="button"
+            onClick={() => setView(key)}
+            aria-pressed={view === key}
             style={{
               width: "auto",
-              padding: "4px 14px",
+              padding: "5px 14px",
               fontSize: 13,
               borderRadius: 999,
-              background: scope === key ? "var(--accent)" : "var(--card)",
-              color: scope === key ? "#131316" : "var(--muted)",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              background: view === key ? "var(--accent)" : "var(--card)",
+              color: view === key ? "#131316" : "var(--muted)",
               border: "1px solid var(--border)",
             }}
           >
+            <span className="msr" style={{ fontSize: 16 }} aria-hidden>
+              {icon}
+            </span>
             {label}
           </button>
         ))}
-        </div>
       </div>
-      {usedCats.length > 0 && (
-        <div className="lg-chip-row" style={{ columnGap: 12, rowGap: 6, marginBottom: 20 }}>
-          {usedCats.map((c) => {
-            const active = activeCat === c;
-            return (
-              <button
-                key={c}
-                onClick={() => setActiveCat(active ? null : c)}
-                style={{
-                  width: "auto",
-                  padding: 0,
-                  background: "transparent",
-                  border: "none",
-                  cursor: "pointer",
-                  fontSize: 13,
-                  fontWeight: active ? 700 : 400,
-                  color: active ? "var(--accent)" : "var(--muted)",
-                  textDecoration: active ? "underline" : "none",
-                  textUnderlineOffset: 3,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 3,
-                }}
-              >
-                <span className="msr" style={{ fontSize: 14 }} aria-hidden>
-                  {catIcon(c)}
-                </span>
-                {c}
-              </button>
-            );
-          })}
-          {activeCat && (
+
+      {view === "list" ? (
+        <>
+          <input
+            placeholder={narrow ? "Search events" : "Search events by title, place or description..."}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            aria-label="Search events"
+            style={{ marginBottom: 10 }}
+          />
+          <div className="lg-filter-head" style={{ marginBottom: 18 }}>
+            {/* Phone-only: the scope pills live behind this until tapped */}
             <button
-              onClick={() => setActiveCat(null)}
-              style={{
-                width: "auto",
-                padding: 0,
-                background: "transparent",
-                border: "none",
-                cursor: "pointer",
-                fontSize: 12,
-                color: "var(--muted)",
-                textDecoration: "underline",
-                textUnderlineOffset: 3,
-              }}
+              type="button"
+              className="lg-filter-btn"
+              onClick={() => setShowScope((v) => !v)}
+              aria-expanded={showScope}
+              aria-label={scope === "upcoming" ? "Filter events" : `Filter events — showing ${scope}`}
+              title="Filter events"
             >
-              clear
+              <span className="msr" style={{ fontSize: 18 }} aria-hidden>
+                tune
+              </span>
+              {scope !== "upcoming" && <span className="lg-filter-dot" aria-hidden />}
             </button>
-          )}
-        </div>
+            <div className={`lg-scope-row lg-scope-row--start${showScope ? " open" : ""}`}>
+              {(
+                [
+                  ["upcoming", "Upcoming"],
+                  ["booked", "Booked"],
+                  ["past", "Past"],
+                ] as [typeof scope, string][]
+              ).map(([key, label]) => (
+                <button
+                  key={key}
+                  onClick={() => {
+                    setScope(key);
+                    setShowScope(false);
+                  }}
+                  style={{
+                    width: "auto",
+                    padding: "4px 14px",
+                    fontSize: 13,
+                    borderRadius: 999,
+                    background: scope === key ? "var(--accent)" : "var(--card)",
+                    color: scope === key ? "#131316" : "var(--muted)",
+                    border: "1px solid var(--border)",
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </>
+      ) : (
+        (() => {
+          const firstDow = new Date(calYear, calMon, 1).getDay();
+          const daysInMonth = new Date(calYear, calMon + 1, 0).getDate();
+          const todayKey = dayKey(new Date());
+          return (
+            <div style={{ marginBottom: 22 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10 }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCalMonth(new Date(calYear, calMon - 1, 1));
+                    setSelectedDay(null);
+                  }}
+                  aria-label="Previous month"
+                  style={{
+                    width: 30,
+                    height: 30,
+                    padding: 0,
+                    borderRadius: "50%",
+                    background: "var(--card)",
+                    border: "1px solid var(--border)",
+                    color: "var(--muted)",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    cursor: "pointer",
+                  }}
+                >
+                  <span className="msr" style={{ fontSize: 18 }} aria-hidden>
+                    chevron_left
+                  </span>
+                </button>
+                <strong style={{ fontSize: 15, minWidth: 150, textAlign: "center" }}>
+                  {calMonth.toLocaleDateString([], { month: "long", year: "numeric" })}
+                </strong>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCalMonth(new Date(calYear, calMon + 1, 1));
+                    setSelectedDay(null);
+                  }}
+                  aria-label="Next month"
+                  style={{
+                    width: 30,
+                    height: 30,
+                    padding: 0,
+                    borderRadius: "50%",
+                    background: "var(--card)",
+                    border: "1px solid var(--border)",
+                    color: "var(--muted)",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    cursor: "pointer",
+                  }}
+                >
+                  <span className="msr" style={{ fontSize: 18 }} aria-hidden>
+                    chevron_right
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const d = new Date();
+                    setCalMonth(new Date(d.getFullYear(), d.getMonth(), 1));
+                    setSelectedDay(dayKey(d));
+                  }}
+                  style={{
+                    width: "auto",
+                    marginLeft: "auto",
+                    padding: 0,
+                    background: "transparent",
+                    border: "none",
+                    cursor: "pointer",
+                    fontSize: 13,
+                    color: "var(--muted)",
+                    textDecoration: "underline",
+                    textUnderlineOffset: 3,
+                  }}
+                >
+                  Today
+                </button>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4 }}>
+                {["S", "M", "T", "W", "T", "F", "S"].map((d, i) => (
+                  <div key={i} style={{ textAlign: "center", fontSize: 11, color: "var(--muted)", padding: "2px 0" }} aria-hidden>
+                    {d}
+                  </div>
+                ))}
+                {Array.from({ length: firstDow }).map((_, i) => (
+                  <div key={`blank-${i}`} />
+                ))}
+                {Array.from({ length: daysInMonth }).map((_, i) => {
+                  const day = i + 1;
+                  const k = dayKey(new Date(calYear, calMon, day));
+                  const evs = eventsByDay.get(k) ?? [];
+                  const isToday = k === todayKey;
+                  const isSel = k === selectedDay;
+                  return (
+                    <button
+                      key={k}
+                      type="button"
+                      onClick={() => setSelectedDay(isSel ? null : k)}
+                      aria-pressed={isSel}
+                      aria-label={`${day} — ${evs.length} event${evs.length === 1 ? "" : "s"}`}
+                      style={{
+                        padding: "6px 0 5px",
+                        minHeight: 46,
+                        borderRadius: 10,
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        gap: 3,
+                        background: isSel ? "var(--accent)" : "var(--card)",
+                        color: isSel ? "#131316" : "var(--text)",
+                        border: isToday ? "2px solid var(--accent)" : "1px solid var(--border)",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <span style={{ fontSize: 13, fontWeight: isToday || isSel ? 700 : 400 }}>{day}</span>
+                      {evs.length > 0 && (
+                        <span style={{ display: "flex", gap: 3 }} aria-hidden>
+                          {evs.slice(0, 3).map((e) => (
+                            <span
+                              key={e.id}
+                              style={{
+                                width: 5,
+                                height: 5,
+                                borderRadius: "50%",
+                                background: isSel ? "#131316" : roomSurface(e.bg_color).bg,
+                              }}
+                            />
+                          ))}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+              <p style={{ fontSize: 13, color: "var(--muted)", margin: "12px 0 0", display: "flex", alignItems: "center", gap: 10 }}>
+                {selectedDay
+                  ? `${new Date(`${selectedDay}T12:00`).toLocaleDateString([], { weekday: "long", day: "numeric", month: "long" })} · ${calVisible.length} event${calVisible.length === 1 ? "" : "s"}`
+                  : `${monthEvents.length} event${monthEvents.length === 1 ? "" : "s"} this month`}
+                {selectedDay && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedDay(null)}
+                    style={{
+                      width: "auto",
+                      padding: 0,
+                      background: "transparent",
+                      border: "none",
+                      cursor: "pointer",
+                      fontSize: 12,
+                      color: "var(--muted)",
+                      textDecoration: "underline",
+                      textUnderlineOffset: 3,
+                    }}
+                  >
+                    show whole month
+                  </button>
+                )}
+              </p>
+            </div>
+          );
+        })()
       )}
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 14 }}>
-        {visible.map((e) => {
+        {shown.map((e) => {
           const s = roomSurface(e.bg_color);
           const ink = s.ink;
           const sub = s.sub;
@@ -612,7 +785,10 @@ export default function EventsClient({
                             .slice(0, 4)
                             .map((a, i) => (
                               <ProfileTrigger
-                                key={a.user_id}
+                                // Signed-out visitors get anonymous head-count
+                                // rows that all share user_id "" — fall back to
+                                // the index so keys stay unique.
+                                key={a.user_id || `anon-${i}`}
                                 userId={a.user_id}
                                 style={{ marginLeft: i ? -8 : 0, borderRadius: "50%", display: "inline-flex" }}
                               >
@@ -732,9 +908,13 @@ export default function EventsClient({
             </div>
           );
         })}
-        {visible.length === 0 && (
+        {shown.length === 0 && (
           <p style={{ color: "var(--muted)", fontSize: 14 }}>
-            No events match — host the first one.
+            {view === "calendar"
+              ? selectedDay
+                ? "Nothing on this day."
+                : "Nothing this month."
+              : "No events here yet — check back soon."}
           </p>
         )}
       </div>

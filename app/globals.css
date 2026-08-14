@@ -791,6 +791,17 @@ body {
   .lg-hide-narrow {
     display: none;
   }
+
+  /* The phone-only counterpart (e.g. the rail-actions ⋮ menu) */
+  .lg-show-narrow {
+    display: inline-flex !important;
+  }
+}
+
+/* Hidden except on phones — pairs with .lg-hide-narrow above. Declared after
+   the media block, so the narrow rule needs its !important to win. */
+.lg-show-narrow {
+  display: none;
 }
 
 /*
@@ -976,11 +987,14 @@ body {
     display: flex;
   }
 
-  /* One scrolling row instead of three wrapped ones */
+  /* One scrolling row instead of three wrapped ones. Top padding + offset
+     margin give the hover lift room inside the overflow clip, same trick as
+     .lg-rail-scroll. */
   .lg-chip-row {
     flex-wrap: nowrap;
     overflow-x: auto;
-    padding-bottom: 8px;
+    padding: 8px 2px 8px;
+    margin-top: -8px;
     scrollbar-width: none;
   }
 
