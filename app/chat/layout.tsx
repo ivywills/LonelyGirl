@@ -12,12 +12,18 @@ export default async function ChatLayout({ children }: { children: React.ReactNo
 
   const { data: memberships } = await supabase
     .from("room_members")
-    .select("room_id, chat_rooms(id, name, bg_color, image_url)")
+    .select("room_id, chat_rooms(id, name, bg_color, image_url, hidden_at)")
     .eq("user_id", user.id);
 
+  /*
+   * Archived rooms stay out of everyone's sidebar. RLS already hides them
+   * from regular members (the embed comes back null); the hidden_at check
+   * covers admins, who can still see the rows — they manage archived rooms
+   * from the directory's Archive rail instead.
+   */
   const baseRooms = (memberships ?? [])
-    .map((m) => m.chat_rooms as unknown as Omit<SidebarRoom, "lastMessage"> | null)
-    .filter((r): r is Omit<SidebarRoom, "lastMessage"> => !!r);
+    .map((m) => m.chat_rooms as unknown as (Omit<SidebarRoom, "lastMessage"> & { hidden_at: string | null }) | null)
+    .filter((r): r is Omit<SidebarRoom, "lastMessage"> & { hidden_at: string | null } => !!r && !r.hidden_at);
 
   const lastMessages = await Promise.all(
     baseRooms.map((r) =>
