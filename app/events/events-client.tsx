@@ -683,6 +683,12 @@ export default function EventsClient({
                   const evs = eventsByDay.get(k) ?? [];
                   const isToday = k === todayKey;
                   const isSel = k === selectedDay;
+                  /*
+                   * Days with events wear the event's own colour so they jump
+                   * out of the grid; wider screens print the title right in
+                   * the cell, phones get fat dots instead.
+                   */
+                  const es = evs[0] ? roomSurface(evs[0].bg_color) : null;
                   return (
                     <button
                       key={k}
@@ -691,35 +697,59 @@ export default function EventsClient({
                       aria-pressed={isSel}
                       aria-label={`${day} — ${evs.length} event${evs.length === 1 ? "" : "s"}`}
                       style={{
-                        padding: "6px 0 5px",
-                        minHeight: 46,
+                        padding: "6px 3px 5px",
+                        minHeight: narrow ? 48 : 64,
+                        minWidth: 0,
                         borderRadius: 10,
                         display: "flex",
                         flexDirection: "column",
                         alignItems: "center",
+                        justifyContent: "flex-start",
                         gap: 3,
-                        background: isSel ? "var(--accent)" : "var(--card)",
-                        color: isSel ? "#131316" : "var(--text)",
+                        background: isSel ? "var(--accent)" : es ? es.bg : "var(--card)",
+                        color: isSel ? "#131316" : es ? es.ink : "var(--text)",
                         border: isToday ? "2px solid var(--accent)" : "1px solid var(--border)",
                         cursor: "pointer",
                       }}
                     >
-                      <span style={{ fontSize: 13, fontWeight: isToday || isSel ? 700 : 400 }}>{day}</span>
-                      {evs.length > 0 && (
-                        <span style={{ display: "flex", gap: 3 }} aria-hidden>
-                          {evs.slice(0, 3).map((e) => (
+                      <span style={{ fontSize: 13, fontWeight: isToday || isSel || evs.length > 0 ? 700 : 400 }}>
+                        {day}
+                      </span>
+                      {evs.length > 0 &&
+                        (narrow ? (
+                          <span style={{ display: "flex", gap: 3 }} aria-hidden>
+                            {evs.slice(0, 3).map((e) => (
+                              <span
+                                key={e.id}
+                                style={{
+                                  width: 7,
+                                  height: 7,
+                                  borderRadius: "50%",
+                                  background: isSel ? "#131316" : es!.acc,
+                                }}
+                              />
+                            ))}
+                          </span>
+                        ) : (
+                          <>
                             <span
-                              key={e.id}
                               style={{
-                                width: 5,
-                                height: 5,
-                                borderRadius: "50%",
-                                background: isSel ? "#131316" : roomSurface(e.bg_color).bg,
+                                maxWidth: "100%",
+                                fontSize: 10.5,
+                                fontWeight: 600,
+                                lineHeight: 1.2,
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
                               }}
-                            />
-                          ))}
-                        </span>
-                      )}
+                            >
+                              {evs[0].title}
+                            </span>
+                            {evs.length > 1 && (
+                              <span style={{ fontSize: 10, opacity: 0.75 }}>+{evs.length - 1} more</span>
+                            )}
+                          </>
+                        ))}
                     </button>
                   );
                 })}
