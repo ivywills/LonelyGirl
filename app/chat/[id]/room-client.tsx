@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { isNativeMobile } from "@/lib/runtime";
 import { ImagePicker, ROOM_COLORS, roomSurface, uploadRoomImage, type Room } from "@/app/chat/rooms-client";
 import { ProfileTrigger } from "@/app/profile-card";
 import PageHeader from "@/app/page-header";
@@ -268,6 +269,10 @@ export default function RoomClient({
   const [blockedIds, setBlockedIds] = useState<Set<string>>(new Set());
   const [isAdmin, setIsAdmin] = useState(false);
   const [notice, setNotice] = useState("");
+  const [amBanned, setAmBanned] = useState(false);
+  // Set in an effect so server and first client render agree (hydration)
+  const [onNative, setOnNative] = useState(false);
+  useEffect(() => setOnNative(isNativeMobile()), []);
   const bottomRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const stickRef = useRef(true);
@@ -326,6 +331,16 @@ export default function RoomClient({
     supabase.rpc("is_admin").then(({ data }) => {
       if (live) setIsAdmin(data === true);
     });
+    // RLS lets a user read their own ban row — show a plain message instead
+    // of letting sends fail with a policy error.
+    supabase
+      .from("user_bans")
+      .select("user_id")
+      .eq("user_id", userId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (live) setAmBanned(Boolean(data));
+      });
     // The profile sheet fires this after block/unblock so the list updates live.
     const onBlocksChanged = () => loadBlocks();
     window.addEventListener("lg-blocks-changed", onBlocksChanged);
@@ -649,19 +664,22 @@ export default function RoomClient({
         backLabel="all rooms"
         onMenu={onMenu}
       >
-        <button
-          type="button"
-          style={headerBtn}
-          onClick={() =>
-            window.open(window.location.pathname, "_blank", "popup=yes,width=980,height=760")
-          }
-          aria-label="Pop out chat"
-          title="Pop out into its own window"
-        >
-          <span className="msr" style={{ fontSize: 16 }} aria-hidden>
-            open_in_new
-          </span>
-        </button>
+        {/* Pop-out is a desktop/web affordance — a popup inside the phone WebView is a dead end */}
+        {!onNative && (
+          <button
+            type="button"
+            style={headerBtn}
+            onClick={() =>
+              window.open(window.location.pathname, "_blank", "popup=yes,width=980,height=760")
+            }
+            aria-label="Pop out chat"
+            title="Pop out into its own window"
+          >
+            <span className="msr" style={{ fontSize: 16 }} aria-hidden>
+              open_in_new
+            </span>
+          </button>
+        )}
         {room.rules && (
           <button type="button" style={headerBtn} onClick={() => setShowRules((v) => !v)}>
             Rules
@@ -1176,6 +1194,12 @@ export default function RoomClient({
               })}
             </div>
           )}
+          {amBanned ? (
+            <p style={{ fontSize: 13, color: sub, textAlign: "center", padding: "10px 0" }}>
+              Your account is banned from posting. If you think this is a mistake, reach out via
+              the Support page.
+            </p>
+          ) : (
           <form onSubmit={send} style={{ display: "flex", gap: 8 }}>
             <button
               type="button"
@@ -1204,6 +1228,7 @@ export default function RoomClient({
               </span>
             </button>
           </form>
+          )}
         </>
       )}
       </div>

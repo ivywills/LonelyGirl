@@ -46,6 +46,18 @@
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
 	<!--
+		The web app's <input type="file"> pickers offer "Take Photo" on iOS.
+		Without these strings, tapping it crashes the app on the spot — a
+		guaranteed App Review rejection (Guideline 2.1).
+	-->
+	<key>NSCameraUsageDescription</key>
+	<string>Lets you take a photo when adding an avatar, room picture, or scrapbook image.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Lets you choose a photo when adding an avatar, room picture, or scrapbook image.</string>
+	<!-- Standard HTTPS only — answers the export-compliance question up front. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<!--
 		Claims com.lonelygirl.app://auth/callback, which is where Google sends
 		the user back after consent. Sign-in runs in SFSafariViewController
 		because Google rejects app WebViews; without this scheme registered

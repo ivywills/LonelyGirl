@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Product } from "@/lib/shopify";
+import { isNativeMobile } from "@/lib/runtime";
 import PageHeader from "@/app/page-header";
 
 const CATEGORY_META: Record<Product["category"], { label: string; icon: string }> = {
@@ -23,6 +24,9 @@ export default function ShopClient({
   configured: boolean;
 }) {
   const [activeCat, setActiveCat] = useState<Product["category"] | null>(null);
+  // Set in an effect so server and first client render agree (hydration)
+  const [onNative, setOnNative] = useState(false);
+  useEffect(() => setOnNative(isNativeMobile()), []);
 
   const cats = useMemo(() => {
     const present = new Set(products.map((p) => p.category));
@@ -30,6 +34,37 @@ export default function ShopClient({
   }, [products]);
 
   const visible = activeCat ? products.filter((p) => p.category === activeCat) : products;
+
+  /*
+   * In the App Store build, placeholder products with dead "Coming soon"
+   * buttons read as an unfinished app (Guideline 2.1). Until Shopify is
+   * connected, the native shell gets an honest empty channel instead —
+   * the web keeps the previews.
+   */
+  if (onNative && !configured) {
+    return (
+      <div className="shop-theme">
+        <PageHeader title="Lonely Girl Merch" backHref="/" backLabel="change the channel" />
+        <main
+          style={{
+            maxWidth: 960,
+            margin: "0 auto",
+            padding: "28px 20px 60px",
+            width: "100%",
+            textAlign: "center",
+          }}
+        >
+          <span className="msr" style={{ fontSize: 44, color: "var(--accent)", opacity: 0.65 }} aria-hidden>
+            podcasts
+          </span>
+          <p style={{ fontWeight: 600, fontSize: 15, marginTop: 10 }}>This channel is warming up.</p>
+          <p style={{ color: "var(--muted)", fontSize: 14, marginTop: 6 }}>
+            Small-batch merch is on its way — check back soon.
+          </p>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="shop-theme">

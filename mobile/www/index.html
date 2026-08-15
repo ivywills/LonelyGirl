@@ -75,13 +75,15 @@
       what shows if the build was synced without a server URL, or if the phone
       can't reach it — a dead-end black screen would be worse.
     -->
+    <!--
+      End users only ever see this offline. The dev case (synced without a
+      server URL) is covered by the warning capacitor.config.ts prints —
+      keeping setup instructions off this screen so it never reads like a
+      debug page in App Review.
+    -->
     <div class="screen">
-      <h1>Can't reach LonelyGirl</h1>
-      <p>
-        The app couldn't load the site. Check your connection — or, if you're
-        building this yourself, set the server URL and re-sync:
-      </p>
-      <code>LONELYGIRL_SERVER_URL=https://…<br />npm run mobile:sync</code>
+      <h1>You&rsquo;re offline</h1>
+      <p>LonelyGirl couldn&rsquo;t connect. Check your connection and try again.</p>
       <button type="button" onclick="location.reload()">Try again</button>
     </div>
   </body>

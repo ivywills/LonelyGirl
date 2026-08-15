@@ -8,11 +8,15 @@ import { isNativeMobile } from "@/lib/runtime";
  * branch is behind isNativeMobile() and every Capacitor import is dynamic, so
  * in a browser tab this renders nothing and loads nothing.
  *
- * Two jobs:
+ * Three jobs:
  *  1. Finish a Google sign-in that was handed to the system browser — the
  *     deep link comes back as com.lonelygirl.app://auth/callback?code=...
  *  2. Make the Android back button behave like a back button instead of
  *     closing the app on the first press.
+ *  3. Send external links (Shopify, playlist services, anywhere off-site) to
+ *     the system browser. Letting them navigate the WebView strands the user
+ *     outside the app with no way back — exactly the "repackaged website"
+ *     seam App Review looks for (Guideline 4.2).
  */
 export default function NativeBridge() {
   useEffect(() => {
@@ -70,6 +74,18 @@ export default function NativeBridge() {
           else App.exitApp();
         })
       );
+
+      const onClick = (e: MouseEvent) => {
+        const anchor = (e.target as HTMLElement | null)?.closest?.("a[href]");
+        if (!anchor) return;
+        const href = anchor.getAttribute("href") ?? "";
+        if (!/^https?:\/\//i.test(href)) return; // relative and mailto: stay native
+        if (new URL(href).origin === window.location.origin) return;
+        e.preventDefault();
+        Browser.open({ url: href });
+      };
+      document.addEventListener("click", onClick, true);
+      listeners.push({ remove: () => document.removeEventListener("click", onClick, true) });
     })();
 
     return () => {
