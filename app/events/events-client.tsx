@@ -951,7 +951,7 @@ export default function EventsClient({
                           </span>
                         </a>
                       )}
-                      {e.creator_id === userId && (
+                      {isAdmin && (
                         <button
                           onClick={() => openEdit(e)}
                           aria-label="Edit event"
@@ -974,7 +974,7 @@ export default function EventsClient({
                           </span>
                         </button>
                       )}
-                      {e.creator_id === userId && (
+                      {isAdmin && (
                         <button
                           onClick={() => deleteEvent(e)}
                           aria-label="Delete event"
