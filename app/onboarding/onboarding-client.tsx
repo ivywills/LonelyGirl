@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import {
   AGE_RANGES,
@@ -483,12 +484,12 @@ export default function Onboarding({
               {step === 0 ? "Let's go" : step === STEPS - 1 ? (pending ? "Saving…" : "Enter LonelyGirl") : "Continue"}
             </button>
             {step === 0 ? (
-              <a
+              <Link
                 href="/"
                 style={{ color: T.muted, fontSize: 13, textDecoration: "underline", whiteSpace: "nowrap" }}
               >
                 Continue as guest
-              </a>
+              </Link>
             ) : null}
             {step === 7 ? (
               <button

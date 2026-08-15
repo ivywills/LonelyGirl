@@ -39,12 +39,15 @@
     "@capacitor/assets": "^3.0.5",
     "@capacitor/cli": "^7.0.0",
     "@capacitor/ios": "^7.0.0",
+    "@eslint/eslintrc": "^3.3.6",
     "@types/node": "^22",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "concurrently": "^9.1.2",
     "electron": "^38.8.6",
     "electron-builder": "^25.1.8",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "^15.5.20",
     "typescript": "^5"
   }
 }

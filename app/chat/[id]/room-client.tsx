@@ -856,7 +856,7 @@ export default function RoomClient({
               {myRequest.status === "denied" && "Your request wasn't accepted this time."}
               {myRequest.status === "approved" && (
                 <button className="primary" onClick={join}>
-                  You're in — enter the room
+                  You&apos;re in — enter the room
                 </button>
               )}
             </p>
