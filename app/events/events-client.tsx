@@ -94,6 +94,13 @@ function icsHref(e: EventRow): string {
 
 const isUrl = (s: string) => /^https?:\/\//i.test(s.trim());
 
+/** ISO → the local "YYYY-MM-DDTHH:mm" a datetime-local input wants. */
+function toLocalInput(iso: string): string {
+  const d = new Date(iso);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
 export default function EventsClient({
   events,
   initialAttendees,
@@ -149,6 +156,35 @@ export default function EventsClient({
   const [capacity, setCapacity] = useState("");
   const [imageUrl, setImageUrl] = useState("");
   const [bgColor, setBgColor] = useState(ROOM_COLORS[11]);
+  // When set, the form above edits this event instead of creating a new one
+  const [editingId, setEditingId] = useState<string | null>(null);
+
+  function resetForm() {
+    setEditingId(null);
+    setTitle("");
+    setDescription("");
+    setCategory(EVENT_CATEGORIES[0][0]);
+    setLocation("");
+    setStartsAt("");
+    setCapacity("");
+    setImageUrl("");
+    setBgColor(ROOM_COLORS[11]);
+  }
+
+  function openEdit(e: EventRow) {
+    setEditingId(e.id);
+    setTitle(e.title);
+    setDescription(e.description);
+    setCategory(e.category);
+    setLocation(e.location);
+    setStartsAt(toLocalInput(e.starts_at));
+    setCapacity(e.capacity ? String(e.capacity) : "");
+    setImageUrl(e.image_url);
+    setBgColor(e.bg_color);
+    setCreating(true);
+    setError("");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
 
   const counts = useMemo(() => {
     const m = new Map<string, number>();
@@ -248,7 +284,7 @@ export default function EventsClient({
     }
   }
 
-  async function createEvent(ev: React.FormEvent) {
+  async function saveEvent(ev: React.FormEvent) {
     ev.preventDefault();
     if (!userId) return;
     if (!title.trim() || !startsAt) return;
@@ -256,19 +292,40 @@ export default function EventsClient({
     setError("");
     const supabase = createClient();
     const cap = parseInt(capacity, 10);
+    const fields = {
+      title: title.trim(),
+      description: description.trim(),
+      category,
+      location: location.trim(),
+      starts_at: new Date(startsAt).toISOString(),
+      capacity: Number.isFinite(cap) && cap > 0 ? cap : null,
+      bg_color: bgColor,
+      image_url: imageUrl.trim(),
+    };
+
+    if (editingId) {
+      const { data, error: err } = await supabase
+        .from("events")
+        .update(fields)
+        .eq("id", editingId)
+        .select()
+        .single();
+      setBusy(false);
+      if (err || !data) {
+        setError(err?.message ?? "Could not save the event.");
+        return;
+      }
+      setLocalEvents((prev) =>
+        prev.map((x) => (x.id === editingId ? (data as EventRow) : x)).sort((a, b) => a.starts_at.localeCompare(b.starts_at))
+      );
+      setCreating(false);
+      resetForm();
+      return;
+    }
+
     const { data, error: err } = await supabase
       .from("events")
-      .insert({
-        creator_id: userId,
-        title: title.trim(),
-        description: description.trim(),
-        category,
-        location: location.trim(),
-        starts_at: new Date(startsAt).toISOString(),
-        capacity: Number.isFinite(cap) && cap > 0 ? cap : null,
-        bg_color: bgColor,
-        image_url: imageUrl.trim(),
-      })
+      .insert({ creator_id: userId, ...fields })
       .select()
       .single();
     if (err || !data) {
@@ -286,12 +343,7 @@ export default function EventsClient({
     setAttendees((prev) => [...prev, { event_id: data.id, user_id: userId, display_name: displayName }]);
     setCreating(false);
     setBusy(false);
-    setTitle("");
-    setDescription("");
-    setLocation("");
-    setStartsAt("");
-    setCapacity("");
-    setImageUrl("");
+    resetForm();
   }
 
   return (
@@ -304,7 +356,14 @@ export default function EventsClient({
         {/* Hidden on phones, like the chat directory's create button.
             Hosting is admin-only, so everyone else gets no CTA at all. */}
         {isAdmin && (
-          <button type="button" className="lg-cta lg-hide-narrow" onClick={() => setCreating((v) => !v)}>
+          <button
+            type="button"
+            className="lg-cta lg-hide-narrow"
+            onClick={() => {
+              if (creating) resetForm();
+              setCreating((v) => !v);
+            }}
+          >
             <span className="msr" style={{ fontSize: 18 }} aria-hidden>
               {creating ? "close" : "add_circle"}
             </span>
@@ -317,11 +376,11 @@ export default function EventsClient({
 
       {creating && isAdmin && (
         <form
-          onSubmit={createEvent}
+          onSubmit={saveEvent}
           className="card on-room"
           style={{ maxWidth: "none", marginBottom: 24, background: roomSurface(bgColor).bg, transition: "background .3s" }}
         >
-          <h2 style={{ fontSize: 18, marginBottom: 12 }}>New event</h2>
+          <h2 style={{ fontSize: 18, marginBottom: 12 }}>{editingId ? "Edit event" : "New event"}</h2>
           <label>Title</label>
           <input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={80} required />
           <label>Description</label>
@@ -413,9 +472,27 @@ export default function EventsClient({
               />
             ))}
           </div>
-          <button className="primary" disabled={busy || uploading} type="submit">
-            {busy ? "Creating…" : uploading ? "Waiting for upload…" : "Create event"}
-          </button>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button className="primary" disabled={busy || uploading} type="submit" style={{ width: "auto", flex: 1 }}>
+              {busy
+                ? "Saving…"
+                : uploading
+                  ? "Waiting for upload…"
+                  : editingId
+                    ? "Save changes"
+                    : "Create event"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setCreating(false);
+                resetForm();
+              }}
+              style={{ width: "auto", padding: "8px 18px", background: "var(--card)", color: "var(--muted)", border: "1px solid var(--border)" }}
+            >
+              Cancel
+            </button>
+          </div>
         </form>
       )}
 
@@ -843,6 +920,29 @@ export default function EventsClient({
                             calendar_add_on
                           </span>
                         </a>
+                      )}
+                      {e.creator_id === userId && (
+                        <button
+                          onClick={() => openEdit(e)}
+                          aria-label="Edit event"
+                          title="Edit this event"
+                          style={{
+                            width: 28,
+                            height: 28,
+                            padding: 0,
+                            borderRadius: 8,
+                            background: "transparent",
+                            border: "1px solid var(--border)",
+                            color: "inherit",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
+                        >
+                          <span className="msr" style={{ fontSize: 16 }} aria-hidden>
+                            edit
+                          </span>
+                        </button>
                       )}
                       {e.creator_id === userId && (
                         <button
