@@ -18,6 +18,19 @@ const headerBtn: React.CSSProperties = {
   border: "1px solid var(--border)",
 };
 
+/** Tiny inline report/delete icons in a bubble's meta row. */
+const msgActionBtn: React.CSSProperties = {
+  background: "transparent",
+  border: "none",
+  padding: 0,
+  marginLeft: 6,
+  width: "auto",
+  color: "inherit",
+  opacity: 0.65,
+  cursor: "pointer",
+  verticalAlign: "middle",
+};
+
 type Msg = {
   id: number;
   room_id: string;
@@ -252,6 +265,9 @@ export default function RoomClient({
   const [error, setError] = useState("");
   const [hasMore, setHasMore] = useState(initialMessages.length >= 50);
   const [pinnedList, setPinnedList] = useState<Msg[]>([]);
+  const [blockedIds, setBlockedIds] = useState<Set<string>>(new Set());
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [notice, setNotice] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const stickRef = useRef(true);
@@ -295,6 +311,37 @@ export default function RoomClient({
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    let live = true;
+    const loadBlocks = () =>
+      supabase
+        .from("user_blocks")
+        .select("blocked_id")
+        .eq("blocker_id", userId)
+        .then(({ data }) => {
+          if (live && data) setBlockedIds(new Set(data.map((b) => b.blocked_id)));
+        });
+    loadBlocks();
+    supabase.rpc("is_admin").then(({ data }) => {
+      if (live) setIsAdmin(data === true);
+    });
+    // The profile sheet fires this after block/unblock so the list updates live.
+    const onBlocksChanged = () => loadBlocks();
+    window.addEventListener("lg-blocks-changed", onBlocksChanged);
+    return () => {
+      live = false;
+      window.removeEventListener("lg-blocks-changed", onBlocksChanged);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
+
+  // Auto-dismiss the small confirmation line ("Report sent…")
+  useEffect(() => {
+    if (!notice) return;
+    const t = setTimeout(() => setNotice(""), 4000);
+    return () => clearTimeout(t);
+  }, [notice]);
 
   async function addCustomEmoji(file: File) {
     const cleanName = (s: string) => s.trim().toLowerCase().replace(/[^a-z0-9_]/g, "");
@@ -359,6 +406,18 @@ export default function RoomClient({
             }
             return prev.filter((m) => m.id !== payload.new.id);
           });
+        }
+      )
+      .on(
+        // DELETE events can't be filtered by room (only the old PK survives),
+        // so listen unfiltered and drop by id — a no-op for other rooms.
+        "postgres_changes",
+        { event: "DELETE", schema: "public", table: "messages" },
+        (payload: { old: { id?: number } }) => {
+          const gone = payload.old?.id;
+          if (!gone) return;
+          setMessages((prev) => prev.filter((m) => m.id !== gone));
+          setPinnedList((prev) => prev.filter((m) => m.id !== gone));
         }
       )
       .subscribe();
@@ -524,6 +583,33 @@ export default function RoomClient({
     if (err) setError(err.message);
   }
 
+  async function deleteMessage(m: Msg) {
+    if (!confirm("Delete this message?")) return;
+    const { error: err } = await supabase.from("messages").delete().eq("id", m.id);
+    if (err) {
+      setError(err.message);
+      return;
+    }
+    // Realtime echoes the delete too; removing now just makes it instant.
+    setMessages((prev) => prev.filter((x) => x.id !== m.id));
+    setPinnedList((prev) => prev.filter((x) => x.id !== m.id));
+  }
+
+  async function reportMessage(m: Msg) {
+    const reason = window.prompt("What's wrong with this message? A sentence helps the admins act on it.");
+    if (reason === null) return;
+    const { error: err } = await supabase.from("reports").insert({
+      reporter_id: userId,
+      reported_user_id: m.user_id,
+      message_id: m.id,
+      message_content: m.content,
+      room_id: room.id,
+      reason: reason.trim().slice(0, 500),
+    });
+    if (err) setError(err.message);
+    else setNotice("Report sent. An admin will take a look.");
+  }
+
   async function saveSettings(e: React.FormEvent) {
     e.preventDefault();
     const { error: err } = await supabase
@@ -543,7 +629,8 @@ export default function RoomClient({
     else setShowSettings(false);
   }
 
-  const pinned = pinnedList;
+  const pinned = pinnedList.filter((m) => !blockedIds.has(m.user_id));
+  const visibleMessages = messages.filter((m) => !blockedIds.has(m.user_id));
 
   return (
     <>
@@ -638,6 +725,7 @@ export default function RoomClient({
       )}
 
       {error && <p className="msg-error" style={{ marginTop: 10 }}>{error}</p>}
+      {notice && <p style={{ marginTop: 10, fontSize: 13, color: acc }}>{notice}</p>}
 
       {isCreator && showSettings && (
         <form onSubmit={saveSettings} className="card" style={{ maxWidth: "none", margin: "12px 0" }}>
@@ -836,7 +924,7 @@ export default function RoomClient({
                 Load earlier messages
               </button>
             )}
-            {messages.map((m) =>
+            {visibleMessages.map((m) =>
               m.kind === "system" ? (
                 <p key={m.id} style={{ textAlign: "center", fontSize: 12, color: sub }}>
                   {m.content}
@@ -867,6 +955,32 @@ export default function RoomClient({
                       </ProfileTrigger>
                     )}
                     <span style={{ marginLeft: 8, fontSize: 10, opacity: 0.8 }}>{msgTime(m.created_at)}</span>
+                    {m.user_id !== userId && (
+                      <button
+                        type="button"
+                        onClick={() => reportMessage(m)}
+                        aria-label="Report this message"
+                        title="Report"
+                        style={msgActionBtn}
+                      >
+                        <span className="msr" style={{ fontSize: 13 }} aria-hidden>
+                          flag
+                        </span>
+                      </button>
+                    )}
+                    {(m.user_id === userId || isAdmin) && (
+                      <button
+                        type="button"
+                        onClick={() => deleteMessage(m)}
+                        aria-label="Delete this message"
+                        title="Delete"
+                        style={msgActionBtn}
+                      >
+                        <span className="msr" style={{ fontSize: 13 }} aria-hidden>
+                          delete
+                        </span>
+                      </button>
+                    )}
                   </p>
                   {m.kind === "gif" ? (
                     // eslint-disable-next-line @next/next/no-img-element

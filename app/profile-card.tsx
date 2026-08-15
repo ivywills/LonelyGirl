@@ -156,14 +156,24 @@ export function ProfileCardView({ profile, width = 280 }: { profile: Card; width
 /*
  * Bottom sheet wrapper for use from inside the dark chat / event UI. Fetches
  * the card itself so callers only need a user id.
+ *
+ * Also carries the safety actions (report / block / admin ban) so they exist
+ * everywhere a profile can be opened — App Store Guideline 1.2 requires both
+ * reporting and blocking to be reachable from user-generated content.
  */
 export function ProfileSheet({ userId, onClose }: { userId: string; onClose: () => void }) {
   const [profile, setProfile] = useState<Card | null>(null);
   const [missing, setMissing] = useState(false);
+  const [me, setMe] = useState<string | null>(null);
+  const [amAdmin, setAmAdmin] = useState(false);
+  const [blocked, setBlocked] = useState(false);
+  const [banned, setBanned] = useState(false);
+  const [note, setNote] = useState("");
 
   useEffect(() => {
     let live = true;
-    createClient()
+    const supabase = createClient();
+    supabase
       .from("profile_cards")
       .select("*")
       .eq("user_id", userId)
@@ -173,10 +183,89 @@ export function ProfileSheet({ userId, onClose }: { userId: string; onClose: () 
         if (data) setProfile(data as Card);
         else setMissing(true);
       });
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
+      if (!live || !user) return;
+      setMe(user.id);
+      if (user.id === userId) return;
+      const [admin, block] = await Promise.all([
+        supabase.rpc("is_admin"),
+        supabase
+          .from("user_blocks")
+          .select("blocked_id")
+          .eq("blocker_id", user.id)
+          .eq("blocked_id", userId)
+          .maybeSingle(),
+      ]);
+      if (!live) return;
+      setBlocked(Boolean(block.data));
+      if (admin.data === true) {
+        setAmAdmin(true);
+        const { data: ban } = await supabase
+          .from("user_bans")
+          .select("user_id")
+          .eq("user_id", userId)
+          .maybeSingle();
+        if (live) setBanned(Boolean(ban));
+      }
+    });
     return () => {
       live = false;
     };
   }, [userId]);
+
+  async function report() {
+    if (!me) return;
+    const reason = window.prompt("What's going on? A sentence helps the admins act on it.");
+    if (reason === null) return;
+    const { error } = await createClient().from("reports").insert({
+      reporter_id: me,
+      reported_user_id: userId,
+      reason: reason.trim().slice(0, 500),
+    });
+    setNote(error ? "Couldn't send that report — try again." : "Report sent. An admin will take a look.");
+  }
+
+  async function toggleBlock() {
+    if (!me) return;
+    const supabase = createClient();
+    if (blocked) {
+      const { error } = await supabase
+        .from("user_blocks")
+        .delete()
+        .eq("blocker_id", me)
+        .eq("blocked_id", userId);
+      if (!error) setBlocked(false);
+    } else {
+      const { error } = await supabase
+        .from("user_blocks")
+        .insert({ blocker_id: me, blocked_id: userId });
+      if (!error) {
+        setBlocked(true);
+        setNote("Blocked. You won't see their messages anymore.");
+      }
+    }
+    // Chat screens listen for this and refresh their block list.
+    window.dispatchEvent(new CustomEvent("lg-blocks-changed"));
+  }
+
+  async function toggleBan() {
+    if (!me) return;
+    const supabase = createClient();
+    if (banned) {
+      const { error } = await supabase.from("user_bans").delete().eq("user_id", userId);
+      if (!error) {
+        setBanned(false);
+        setNote("Unbanned.");
+      }
+    } else {
+      if (!confirm("Ban this account? They won't be able to post anywhere.")) return;
+      const { error } = await supabase.from("user_bans").insert({ user_id: userId, banned_by: me });
+      if (!error) {
+        setBanned(true);
+        setNote("Banned. They can no longer post.");
+      }
+    }
+  }
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -249,6 +338,36 @@ export function ProfileSheet({ userId, onClose }: { userId: string; onClose: () 
           >
             {missing ? "She hasn't set up a profile yet ✨" : "Loading…"}
           </div>
+        )}
+        {me && me !== userId && (
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
+            {[
+              { label: "Report", onClick: report },
+              { label: blocked ? "Unblock" : "Block", onClick: toggleBlock },
+              ...(amAdmin ? [{ label: banned ? "Unban" : "Ban", onClick: toggleBan }] : []),
+            ].map((a) => (
+              <button
+                key={a.label}
+                type="button"
+                onClick={a.onClick}
+                style={{
+                  width: "auto",
+                  padding: "6px 14px",
+                  fontSize: 12,
+                  borderRadius: 999,
+                  border: "none",
+                  background: "rgba(255,255,255,0.16)",
+                  color: "#fff",
+                  cursor: "pointer",
+                }}
+              >
+                {a.label}
+              </button>
+            ))}
+          </div>
+        )}
+        {note && (
+          <p style={{ margin: 0, fontSize: 12, color: "#fff", opacity: 0.85, textAlign: "center" }}>{note}</p>
         )}
       </div>
     </div>

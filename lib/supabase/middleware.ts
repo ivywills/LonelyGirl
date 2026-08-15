@@ -39,7 +39,7 @@ export async function updateSession(request: NextRequest) {
    * one. /events is open too: browsing is public, and the page itself asks
    * for sign-in only when she tries to book or host.
    */
-  const GUARDED = ["/account", "/chat", "/playlists", "/scrapbook", "/shop"];
+  const GUARDED = ["/account", "/chat", "/playlists", "/scrapbook", "/shop", "/moderation"];
   const isGuarded = GUARDED.some((p) => path.startsWith(p));
 
   // Protect signed-in areas: redirect signed-out users to /login

@@ -294,6 +294,26 @@ button.google:hover {
   background: #ececec;
 }
 
+/* Sign in with Apple — black per Apple's button guidelines */
+button.apple {
+  background: #000;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-bottom: 16px;
+  border: 1px solid #000;
+}
+
+button.apple:hover {
+  background: #1a1a1a;
+}
+
+:root[data-theme="light"] button.apple {
+  border-color: #000;
+}
+
 .divider {
   display: flex;
   align-items: center;
@@ -822,6 +842,34 @@ body {
   .lg-under-topbar {
     min-height: calc(100dvh - var(--lg-topbar-h));
   }
+}
+
+/* Legal / support pages --------------------------------------------------- */
+
+.lg-legal {
+  max-width: 620px;
+  margin: 0 auto;
+  padding: 26px 18px 60px;
+  font-size: 14.5px;
+  line-height: 1.65;
+}
+
+.lg-legal h2 {
+  font-size: 16px;
+  margin: 26px 0 8px;
+}
+
+.lg-legal p {
+  margin: 0 0 12px;
+}
+
+.lg-legal a {
+  color: var(--accent);
+}
+
+.lg-legal-date {
+  font-size: 12px;
+  color: var(--muted);
 }
 
 /* Browse rooms ------------------------------------------------------------ */

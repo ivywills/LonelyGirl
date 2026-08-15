@@ -5,15 +5,22 @@ import { signOut } from "@/app/auth/actions";
 import { colorForUserId, getProfileCard } from "@/lib/profile";
 import { Avatar } from "@/app/profile-card";
 import PageHeader from "@/app/page-header";
+import DeleteAccountButton from "@/app/account/delete-account";
 
 export const dynamic = "force-dynamic";
 
 const PROVIDER_LABELS: Record<string, string> = {
   google: "Google",
+  apple: "Apple",
   email: "Email",
 };
 
-export default async function AccountPage() {
+export default async function AccountPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string }>;
+}) {
+  const { error } = await searchParams;
   const supabase = await createClient();
   const {
     data: { user },
@@ -24,6 +31,7 @@ export default async function AccountPage() {
   }
 
   const profile = await getProfileCard(supabase, user.id);
+  const { data: isAdmin } = await supabase.rpc("is_admin");
   const provider = user.app_metadata?.provider ?? "email";
   const joined = user.created_at
     ? new Date(user.created_at).toLocaleDateString("en-CA", { month: "long", year: "numeric" })
@@ -91,6 +99,8 @@ export default async function AccountPage() {
           )}
         </dl>
 
+        {error && <p className="msg-error" style={{ marginTop: 12 }}>{error}</p>}
+
         <div className="lg-acct-actions">
           <Link className="lg-cta" href="/account/profile">
             <span className="msr" style={{ fontSize: 16 }} aria-hidden>
@@ -98,12 +108,29 @@ export default async function AccountPage() {
             </span>
             {profile?.name ? "Edit profile" : "Set up profile"}
           </Link>
+          {isAdmin === true && (
+            <Link className="lg-cta quiet" href="/moderation">
+              <span className="msr" style={{ fontSize: 16 }} aria-hidden>
+                flag
+              </span>
+              Moderation
+            </Link>
+          )}
           <form action={signOut}>
             <button className="lg-cta quiet" type="submit">
               Sign out
             </button>
           </form>
+          <DeleteAccountButton />
         </div>
+
+        <p style={{ marginTop: 18, fontSize: 12, color: "var(--muted)", textAlign: "center" }}>
+          <Link href="/terms" style={{ color: "inherit" }}>Terms</Link>
+          {" · "}
+          <Link href="/privacy" style={{ color: "inherit" }}>Privacy</Link>
+          {" · "}
+          <Link href="/support" style={{ color: "inherit" }}>Support</Link>
+        </p>
         </div>
       </main>
     </>

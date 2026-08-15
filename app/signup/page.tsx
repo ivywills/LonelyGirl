@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { signUpWithEmail } from "@/app/auth/actions";
 import GoogleButton from "@/app/auth/google-button";
+import AppleButton from "@/app/auth/apple-button";
 
 export default async function SignupPage({
   searchParams,
@@ -16,6 +17,13 @@ export default async function SignupPage({
         <p className="sub">Join LonelyGirl in seconds.</p>
 
         <GoogleButton label="Continue with Google" next={next} />
+        {process.env.NEXT_PUBLIC_ENABLE_APPLE_AUTH === "1" && (
+          <AppleButton label="Continue with Apple" next={next} />
+        )}
+        <p style={{ fontSize: 12, color: "var(--muted)", margin: "8px 0 14px", textAlign: "center" }}>
+          Signing up means you agree to the <Link href="/terms">Terms of Use</Link> and{" "}
+          <Link href="/privacy">Privacy Policy</Link>.
+        </p>
 
         <div className="divider">or sign up with email</div>
 
@@ -41,6 +49,26 @@ export default async function SignupPage({
             minLength={8}
             required
           />
+          <label
+            style={{
+              display: "flex",
+              gap: 8,
+              alignItems: "flex-start",
+              fontSize: 13,
+              margin: "2px 0 14px",
+            }}
+          >
+            <input
+              type="checkbox"
+              name="terms"
+              required
+              style={{ width: "auto", margin: "2px 0 0" }}
+            />
+            <span>
+              I agree to the <Link href="/terms">Terms of Use</Link> and{" "}
+              <Link href="/privacy">Privacy Policy</Link>.
+            </span>
+          </label>
           <button className="primary" type="submit">
             Sign up
           </button>

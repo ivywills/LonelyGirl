@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { logInWithEmail } from "@/app/auth/actions";
 import GoogleButton from "@/app/auth/google-button";
+import AppleButton from "@/app/auth/apple-button";
 
 export default async function LoginPage({
   searchParams,
@@ -16,6 +17,9 @@ export default async function LoginPage({
         <p className="sub">Log in to LonelyGirl.</p>
 
         <GoogleButton label="Continue with Google" next={next} />
+        {process.env.NEXT_PUBLIC_ENABLE_APPLE_AUTH === "1" && (
+          <AppleButton label="Continue with Apple" next={next} />
+        )}
 
         <div className="divider">or log in with email</div>
 

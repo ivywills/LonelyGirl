@@ -40,6 +40,16 @@ export async function signUpWithEmail(formData: FormData) {
     );
   }
 
+  // The checkbox is required client-side; this catches direct POSTs.
+  if (!formData.get("terms")) {
+    redirect(
+      withNext(
+        "/signup?error=" + encodeURIComponent("You need to agree to the terms to sign up."),
+        next
+      )
+    );
+  }
+
   const supabase = await createClient();
   const origin = (await headers()).get("origin");
 
@@ -84,6 +94,29 @@ export async function logInWithEmail(formData: FormData) {
   (await cookies()).delete(INTRO_COOKIE);
   revalidatePath("/", "layout");
   redirect(next);
+}
+
+/*
+ * Permanent account deletion (App Store Guideline 5.1.1(v)). The RPC is a
+ * security-definer function that deletes the caller's auth.users row; every
+ * app table cascades from it.
+ */
+export async function deleteAccount() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  const { error } = await supabase.rpc("delete_user_account");
+  if (error) {
+    redirect("/account?error=" + encodeURIComponent("Couldn't delete the account — try again."));
+  }
+
+  await supabase.auth.signOut();
+  (await cookies()).delete(INTRO_COOKIE);
+  revalidatePath("/", "layout");
+  redirect("/");
 }
 
 export async function signOut() {
