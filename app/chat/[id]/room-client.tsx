@@ -1671,6 +1671,8 @@ export default function RoomClient({
                 width: 40,
                 height: 40,
                 flex: "none",
+                // Global form-label margin would shift this off the row's centerline
+                margin: 0,
                 borderRadius: "50%",
                 color: acc,
                 display: "flex",
