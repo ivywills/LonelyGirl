@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import PageHeader from "@/app/page-header";
+import ChannelLounge, { type LoungeMember } from "@/app/chat/chat-lounge";
 import { useChatMenu } from "@/app/chat/chat-shell";
 
 export type Room = {
@@ -463,6 +464,7 @@ export default function ChatDirectory({
   memberCounts = {},
   lastMessages = {},
   isAdmin = false,
+  roomMembers = {},
 }: {
   rooms: Room[];
   sections: Section[];
@@ -474,6 +476,8 @@ export default function ChatDirectory({
   lastMessages?: Record<string, RoomActivity>;
   /** Rooms and sections are created by admins only — see supabase/admins.sql. */
   isAdmin?: boolean;
+  /** Member faces for the channel lounge — only populated when ≤3 rooms are live. */
+  roomMembers?: Record<string, LoungeMember[]>;
 }) {
   const router = useRouter();
   const onMenu = useChatMenu();
@@ -485,6 +489,8 @@ export default function ChatDirectory({
   useEffect(() => setSections(initialSections), [initialSections]);
 
   const [query, setQuery] = useState("");
+  // Admin escape hatch out of the channel lounge into the full directory
+  const [showClassic, setShowClassic] = useState(false);
   const [mood, setMood] = useState<string | null>(null);
   const [scope, setScope] = useState<"all" | "discover" | "joined" | "public" | "private" | "waiting">("all");
   // Phone-only: whether the collapsed scope row is showing
@@ -870,6 +876,27 @@ export default function ChatDirectory({
     setEditingSection(null);
   }
 
+  /*
+   * A directory built for a dozen rooms makes two look like an outage. While
+   * only a few are live, show the channel lounge instead — the directory
+   * comes back on its own once more rooms are unhidden.
+   */
+  const liveRooms = rooms.filter((r) => !r.hidden_at);
+  if (liveRooms.length > 0 && liveRooms.length <= 3 && !showClassic) {
+    return (
+      <ChannelLounge
+        rooms={liveRooms}
+        memberRoomIds={memberRoomIds}
+        memberCounts={memberCounts}
+        lastMessages={lastMessages}
+        roomMembers={roomMembers}
+        isAdmin={isAdmin}
+        onManage={() => setShowClassic(true)}
+        onMenu={onMenu}
+      />
+    );
+  }
+
   return (
     <>
       <PageHeader
@@ -878,6 +905,14 @@ export default function ChatDirectory({
         backLabel="change the channel"
         onMenu={onMenu}
       >
+        {isAdmin && liveRooms.length <= 3 && (
+          <button type="button" className="lg-cta lg-hide-narrow" onClick={() => setShowClassic(false)}>
+            <span className="msr" style={{ fontSize: 18 }} aria-hidden>
+              live_tv
+            </span>
+            Live view
+          </button>
+        )}
         {/* Hidden on phones — admins still add rooms from the + on each rail */}
         {isAdmin && (
           <button type="button" className="lg-cta lg-hide-narrow" onClick={() => setCreating((v) => !v)}>

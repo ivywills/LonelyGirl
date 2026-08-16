@@ -66,6 +66,34 @@ export default async function ChatPage() {
     if (m) lastMessages[id] = m as RoomActivity;
   });
 
+  /*
+   * With only a couple of live rooms the client renders the channel lounge,
+   * which shows who's inside — fetch those faces here. Bounded: at most 3
+   * rooms' members, one profile query.
+   */
+  const liveRooms = (rooms ?? []).filter((r) => !r.hidden_at);
+  const roomMembers: Record<string, { user_id: string; name: string; avatar_url: string; avatar_color: string }[]> = {};
+  if (liveRooms.length > 0 && liveRooms.length <= 3) {
+    const { data: mems } = await supabase
+      .from("room_members")
+      .select("room_id, user_id")
+      .in("room_id", liveRooms.map((r) => r.id))
+      .limit(120);
+    const ids = Array.from(new Set((mems ?? []).map((m) => m.user_id)));
+    if (ids.length) {
+      const { data: cards } = await supabase
+        .from("profile_cards")
+        .select("user_id, name, avatar_url, avatar_color")
+        .in("user_id", ids);
+      const byUser = Object.fromEntries((cards ?? []).map((c) => [c.user_id, c]));
+      (mems ?? []).forEach((m) => {
+        const card = byUser[m.user_id];
+        if (!card) return;
+        (roomMembers[m.room_id] = roomMembers[m.room_id] ?? []).push(card);
+      });
+    }
+  }
+
   const displayName =
     (user.user_metadata?.full_name as string) ||
     (user.user_metadata?.name as string) ||
@@ -83,6 +111,7 @@ export default async function ChatPage() {
       memberCounts={memberCounts}
       lastMessages={lastMessages}
       isAdmin={!!adminRow}
+      roomMembers={roomMembers}
     />
   );
 }
