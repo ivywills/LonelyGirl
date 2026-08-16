@@ -38,10 +38,17 @@ type Msg = {
   user_id: string;
   display_name: string;
   content: string;
-  kind: "text" | "gif" | "system";
+  kind: "text" | "gif" | "system" | "image";
   pinned: boolean;
   created_at: string;
+  reply_to_id: number | null;
+  edited_at: string | null;
 };
+
+type Reaction = { user_id: string; emoji: string };
+
+/** The tapback row — small on purpose, the full picker is for composing. */
+const QUICK_REACTIONS = ["❤️", "👍", "😂", "😮", "😢", "🔥"];
 
 type JoinRequest = {
   id: string;
@@ -270,13 +277,24 @@ export default function RoomClient({
   const [isAdmin, setIsAdmin] = useState(false);
   const [notice, setNotice] = useState("");
   const [amBanned, setAmBanned] = useState(false);
+  const [reactions, setReactions] = useState<Record<number, Reaction[]>>({});
+  const [reactPickerFor, setReactPickerFor] = useState<number | null>(null);
+  const [replyTo, setReplyTo] = useState<Msg | null>(null);
+  const [editingMsg, setEditingMsg] = useState<Msg | null>(null);
+  const [typers, setTypers] = useState<Record<string, { name: string; until: number }>>({});
+  const [showJump, setShowJump] = useState(false);
+  const [newBelow, setNewBelow] = useState(0);
+  const [attachBusy, setAttachBusy] = useState(false);
   // Set in an effect so server and first client render agree (hydration)
   const [onNative, setOnNative] = useState(false);
   useEffect(() => setOnNative(isNativeMobile()), []);
   const bottomRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const stickRef = useRef(true);
   const lastSendRef = useRef(0);
+  const lastTypingRef = useRef(0);
+  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const isCreator = room.creator_id === userId;
   // Theme-aware room surface: known palette colours resolve to CSS vars with
   // dark and light display variants; legacy hexes get fixed readable inks
@@ -285,9 +303,17 @@ export default function RoomClient({
   const sub = surface.sub;
   const acc = surface.acc;
 
+  const firstScrollRef = useRef(true);
   useEffect(() => {
-    // Only auto-scroll when the reader is already near the bottom
-    if (stickRef.current) bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    // Only auto-scroll when the reader is already near the bottom. The first
+    // scroll is instant so the room always opens at the latest message.
+    if (stickRef.current) {
+      bottomRef.current?.scrollIntoView({
+        behavior: firstScrollRef.current ? "auto" : "smooth",
+        block: "nearest",
+      });
+      firstScrollRef.current = false;
+    }
   }, [messages.length]);
 
   useEffect(() => {
@@ -358,6 +384,53 @@ export default function RoomClient({
     return () => clearTimeout(t);
   }, [notice]);
 
+  function addReaction(messageId: number, uid: string, emoji: string) {
+    setReactions((prev) => {
+      const list = prev[messageId] ?? [];
+      if (list.some((r) => r.user_id === uid && r.emoji === emoji)) return prev;
+      return { ...prev, [messageId]: [...list, { user_id: uid, emoji }] };
+    });
+  }
+
+  function removeReaction(messageId: number, uid: string, emoji: string) {
+    setReactions((prev) => {
+      const list = prev[messageId];
+      if (!list) return prev;
+      return {
+        ...prev,
+        [messageId]: list.filter((r) => !(r.user_id === uid && r.emoji === emoji)),
+      };
+    });
+  }
+
+  async function loadReactions(ids: number[]) {
+    if (!ids.length) return;
+    const { data } = await supabase
+      .from("message_reactions")
+      .select("message_id, user_id, emoji")
+      .in("message_id", ids);
+    if (data) {
+      for (const r of data) addReaction(r.message_id, r.user_id, r.emoji);
+    }
+  }
+
+  useEffect(() => {
+    if (member) loadReactions(initialMessages.map((m) => m.id));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [member]);
+
+  // Drop "is typing…" entries whose 3.5s window has lapsed
+  useEffect(() => {
+    const t = setInterval(() => {
+      setTypers((prev) => {
+        const now = Date.now();
+        const live = Object.entries(prev).filter(([, v]) => v.until > now);
+        return live.length === Object.keys(prev).length ? prev : Object.fromEntries(live);
+      });
+    }, 1200);
+    return () => clearInterval(t);
+  }, []);
+
   async function addCustomEmoji(file: File) {
     const cleanName = (s: string) => s.trim().toLowerCase().replace(/[^a-z0-9_]/g, "");
     const name = cleanName(newEmojiName) || cleanName(file.name.split(".")[0]);
@@ -405,6 +478,8 @@ export default function RoomClient({
             // Keep memory bounded in very busy rooms
             return next.length > 400 ? next.slice(-400) : next;
           });
+          // Feed the jump-to-latest pill when the reader is scrolled up
+          if (!stickRef.current && payload.new.user_id !== userId) setNewBelow((n) => n + 1);
         }
       )
       .on(
@@ -435,8 +510,36 @@ export default function RoomClient({
           setPinnedList((prev) => prev.filter((m) => m.id !== gone));
         }
       )
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "message_reactions" },
+        (payload: { new: { message_id: number; user_id: string; emoji: string } }) =>
+          addReaction(payload.new.message_id, payload.new.user_id, payload.new.emoji)
+      )
+      .on(
+        // Composite PK, so the old record carries all three columns.
+        "postgres_changes",
+        { event: "DELETE", schema: "public", table: "message_reactions" },
+        (payload: { old: { message_id?: number; user_id?: string; emoji?: string } }) => {
+          const { message_id, user_id, emoji } = payload.old;
+          if (message_id && user_id && emoji) removeReaction(message_id, user_id, emoji);
+        }
+      )
+      .on(
+        "broadcast",
+        { event: "typing" },
+        ({ payload }: { payload: { uid: string; name: string } }) => {
+          if (payload.uid === userId) return;
+          setTypers((prev) => ({
+            ...prev,
+            [payload.uid]: { name: payload.name, until: Date.now() + 3500 },
+          }));
+        }
+      )
       .subscribe();
+    channelRef.current = channel;
     return () => {
+      channelRef.current = null;
       supabase.removeChannel(channel);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -493,6 +596,7 @@ export default function RoomClient({
     if (history) {
       setMessages(history.slice().reverse());
       setHasMore(history.length >= 50);
+      loadReactions(history.map((m: Msg) => m.id));
     }
     const { data: joinedMsg } = await supabase
       .from("messages")
@@ -573,6 +677,7 @@ export default function RoomClient({
     const prevHeight = el?.scrollHeight ?? 0;
     setMessages((prev) => [...data.slice().reverse(), ...prev]);
     setHasMore(data.length >= 50);
+    loadReactions(data.map((m: Msg) => m.id));
     requestAnimationFrame(() => {
       if (el) el.scrollTop = el.scrollHeight - prevHeight;
     });
@@ -582,6 +687,27 @@ export default function RoomClient({
     e.preventDefault();
     const content = input.trim();
     if (!content) return;
+
+    if (editingMsg) {
+      const edited = applyShortcodes(content);
+      const stamp = new Date().toISOString();
+      const { error: err } = await supabase
+        .from("messages")
+        .update({ content: edited, edited_at: stamp })
+        .eq("id", editingMsg.id);
+      if (err) {
+        setError(err.message);
+        return;
+      }
+      setMessages((prev) =>
+        prev.map((m) => (m.id === editingMsg.id ? { ...m, content: edited, edited_at: stamp } : m))
+      );
+      setEditingMsg(null);
+      setInput("");
+      setShowEmoji(false);
+      return;
+    }
+
     const now = Date.now();
     if (now - lastSendRef.current < 600) return;
     lastSendRef.current = now;
@@ -594,8 +720,61 @@ export default function RoomClient({
       display_name: displayName,
       content: gif ? content : applyShortcodes(content),
       kind: gif ? "gif" : "text",
+      reply_to_id: replyTo?.id ?? null,
     });
     if (err) setError(err.message);
+    else setReplyTo(null);
+  }
+
+  async function sendImage(file: File) {
+    setAttachBusy(true);
+    setError("");
+    try {
+      const url = await uploadRoomImage(supabase, userId, file);
+      const { error: err } = await supabase.from("messages").insert({
+        room_id: room.id,
+        user_id: userId,
+        display_name: displayName,
+        content: url,
+        kind: "image",
+        reply_to_id: replyTo?.id ?? null,
+      });
+      if (err) throw new Error(err.message);
+      setReplyTo(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Upload failed.");
+    }
+    setAttachBusy(false);
+  }
+
+  async function toggleReaction(m: Msg, emoji: string) {
+    setReactPickerFor(null);
+    const mine = (reactions[m.id] ?? []).some((r) => r.user_id === userId && r.emoji === emoji);
+    if (mine) {
+      const { error: err } = await supabase
+        .from("message_reactions")
+        .delete()
+        .match({ message_id: m.id, user_id: userId, emoji });
+      if (err) setError(err.message);
+      else removeReaction(m.id, userId, emoji);
+    } else {
+      const { error: err } = await supabase
+        .from("message_reactions")
+        .insert({ message_id: m.id, user_id: userId, emoji });
+      if (err) setError(err.message);
+      else addReaction(m.id, userId, emoji);
+    }
+  }
+
+  /** Throttled "I'm typing" broadcast — ephemeral, nothing stored. */
+  function pingTyping() {
+    if (Date.now() - lastTypingRef.current < 1500) return;
+    lastTypingRef.current = Date.now();
+    channelRef.current?.send({
+      type: "broadcast",
+      event: "typing",
+      payload: { uid: userId, name: displayName },
+    });
   }
 
   async function deleteMessage(m: Msg) {
@@ -697,7 +876,7 @@ export default function RoomClient({
         )}
       </PageHeader>
       <main
-        className="lg-under-topbar"
+        className="lg-under-topbar lg-chat-lock"
         style={{
           background: surface.bg,
           display: "flex",
@@ -715,9 +894,11 @@ export default function RoomClient({
           flexDirection: "column",
           flex: 1,
           minWidth: 0,
+          minHeight: 0,
           maxWidth: 760,
           margin: "0 auto",
           width: "100%",
+          position: "relative",
         }}
       >
       <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
@@ -746,7 +927,13 @@ export default function RoomClient({
       {notice && <p style={{ marginTop: 10, fontSize: 13, color: acc }}>{notice}</p>}
 
       {isCreator && showSettings && (
-        <form onSubmit={saveSettings} className="card" style={{ maxWidth: "none", margin: "12px 0" }}>
+        <form
+          onSubmit={saveSettings}
+          className="card"
+          // The page is height-locked for the sticky composer, so the long
+          // settings form scrolls inside itself
+          style={{ maxWidth: "none", margin: "12px 0", maxHeight: "58vh", overflowY: "auto" }}
+        >
           <h2 style={{ fontSize: 16, marginBottom: 10 }}>Room settings</h2>
           <label>Name</label>
           <input value={room.name} onChange={(e) => setRoom({ ...room, name: e.target.value })} maxLength={60} />
@@ -922,7 +1109,11 @@ export default function RoomClient({
             ref={listRef}
             onScroll={() => {
               const el = listRef.current;
-              if (el) stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 160;
+              if (!el) return;
+              const near = el.scrollHeight - el.scrollTop - el.clientHeight < 160;
+              stickRef.current = near;
+              setShowJump(!near);
+              if (near) setNewBelow(0);
             }}
             style={{
               flex: 1,
@@ -931,7 +1122,7 @@ export default function RoomClient({
               display: "flex",
               flexDirection: "column",
               gap: 8,
-              minHeight: 300,
+              minHeight: 0,
             }}
           >
             {hasMore && (
@@ -973,6 +1164,53 @@ export default function RoomClient({
                       </ProfileTrigger>
                     )}
                     <span style={{ marginLeft: 8, fontSize: 10, opacity: 0.8 }}>{msgTime(m.created_at)}</span>
+                    {m.edited_at && (
+                      <span style={{ marginLeft: 5, fontSize: 10, opacity: 0.7 }}>(edited)</span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setReactPickerFor(reactPickerFor === m.id ? null : m.id)}
+                      aria-label="React to this message"
+                      title="React"
+                      style={msgActionBtn}
+                    >
+                      <span className="msr" style={{ fontSize: 13 }} aria-hidden>
+                        add_reaction
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setReplyTo(m);
+                        setEditingMsg(null);
+                        inputRef.current?.focus();
+                      }}
+                      aria-label="Reply to this message"
+                      title="Reply"
+                      style={msgActionBtn}
+                    >
+                      <span className="msr" style={{ fontSize: 13 }} aria-hidden>
+                        reply
+                      </span>
+                    </button>
+                    {m.user_id === userId && m.kind === "text" && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingMsg(m);
+                          setReplyTo(null);
+                          setInput(m.content);
+                          inputRef.current?.focus();
+                        }}
+                        aria-label="Edit this message"
+                        title="Edit"
+                        style={msgActionBtn}
+                      >
+                        <span className="msr" style={{ fontSize: 13 }} aria-hidden>
+                          edit
+                        </span>
+                      </button>
+                    )}
                     {m.user_id !== userId && (
                       <button
                         type="button"
@@ -1000,9 +1238,42 @@ export default function RoomClient({
                       </button>
                     )}
                   </p>
-                  {m.kind === "gif" ? (
+                  {m.reply_to_id != null &&
+                    (() => {
+                      const orig = messages.find((x) => x.id === m.reply_to_id);
+                      const excerpt = !orig
+                        ? "Earlier message"
+                        : orig.kind === "image"
+                          ? "📷 Photo"
+                          : orig.kind === "gif"
+                            ? "GIF"
+                            : orig.content.replace(CUSTOM_EMOJI_RE, "▪").slice(0, 80);
+                      return (
+                        <p
+                          style={{
+                            fontSize: 12,
+                            opacity: 0.7,
+                            borderLeft: "2px solid currentColor",
+                            padding: "1px 0 1px 8px",
+                            margin: "0 0 5px",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {orig
+                            ? `${orig.user_id === userId ? "You" : orig.display_name}: ${excerpt}`
+                            : excerpt}
+                        </p>
+                      );
+                    })()}
+                  {m.kind === "gif" || m.kind === "image" ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={m.content} alt="gif" style={{ maxWidth: "100%", borderRadius: 8, display: "block" }} />
+                    <img
+                      src={m.content}
+                      alt={m.kind === "image" ? "photo" : "gif"}
+                      style={{ maxWidth: "100%", borderRadius: 8, display: "block" }}
+                    />
                   ) : (
                     <p style={{ fontSize: 14, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
                       {renderMessageContent(m.content).map((part, i) =>
@@ -1028,11 +1299,98 @@ export default function RoomClient({
                       )}
                     </p>
                   )}
+                  {(reactions[m.id]?.length ?? 0) > 0 && (
+                    <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 6 }}>
+                      {Object.entries(
+                        (reactions[m.id] ?? []).reduce(
+                          (acc, r) => {
+                            acc[r.emoji] = acc[r.emoji] ?? { count: 0, mine: false };
+                            acc[r.emoji].count += 1;
+                            if (r.user_id === userId) acc[r.emoji].mine = true;
+                            return acc;
+                          },
+                          {} as Record<string, { count: number; mine: boolean }>
+                        )
+                      ).map(([emoji, g]) => (
+                        <button
+                          key={emoji}
+                          type="button"
+                          onClick={() => toggleReaction(m, emoji)}
+                          aria-label={`${g.count} ${emoji} reaction${g.count === 1 ? "" : "s"}${g.mine ? ", including yours" : ""}`}
+                          style={{
+                            width: "auto",
+                            padding: "1px 8px",
+                            fontSize: 12,
+                            lineHeight: 1.6,
+                            borderRadius: 999,
+                            background: "transparent",
+                            color: "inherit",
+                            border: `1px solid ${g.mine ? "currentColor" : "var(--border)"}`,
+                          }}
+                        >
+                          {emoji} {g.count}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {reactPickerFor === m.id && (
+                    <div style={{ display: "flex", gap: 2, marginTop: 6 }}>
+                      {QUICK_REACTIONS.map((em) => (
+                        <button
+                          key={em}
+                          type="button"
+                          onClick={() => toggleReaction(m, em)}
+                          aria-label={`React with ${em}`}
+                          style={{
+                            width: "auto",
+                            padding: "0 3px",
+                            fontSize: 18,
+                            background: "transparent",
+                            border: "none",
+                          }}
+                        >
+                          {em}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )
             )}
             <div ref={bottomRef} />
           </div>
+          {(showJump || newBelow > 0) && (
+            <button
+              type="button"
+              onClick={() => {
+                bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+                setNewBelow(0);
+              }}
+              aria-label="Jump to latest messages"
+              style={{
+                position: "absolute",
+                right: 10,
+                bottom: 96,
+                width: "auto",
+                padding: newBelow > 0 ? "6px 14px" : "6px 9px",
+                borderRadius: 999,
+                background: "var(--card)",
+                border: "1px solid var(--border)",
+                color: "var(--text)",
+                boxShadow: "0 3px 12px rgba(0,0,0,.28)",
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                fontSize: 12,
+                zIndex: 5,
+              }}
+            >
+              <span className="msr" style={{ fontSize: 16 }} aria-hidden>
+                arrow_downward
+              </span>
+              {newBelow > 0 ? `${newBelow} new` : null}
+            </button>
+          )}
           {showEmoji && (
             <div
               className="card"
@@ -1200,6 +1558,74 @@ export default function RoomClient({
               the Support page.
             </p>
           ) : (
+          <>
+          <p style={{ fontSize: 11, color: sub, minHeight: 15, margin: "0 0 3px" }}>
+            {(() => {
+              const names = Object.values(typers)
+                .filter((t) => t.until > Date.now())
+                .map((t) => t.name);
+              if (!names.length) return "";
+              return `${names.join(", ")} ${names.length === 1 ? "is" : "are"} typing…`;
+            })()}
+          </p>
+          {(replyTo || editingMsg) && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                fontSize: 12,
+                color: sub,
+                margin: "0 0 6px",
+              }}
+            >
+              <span className="msr" style={{ fontSize: 14 }} aria-hidden>
+                {editingMsg ? "edit" : "reply"}
+              </span>
+              <span
+                style={{
+                  flex: 1,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {editingMsg
+                  ? "Editing your message"
+                  : `Replying to ${replyTo!.user_id === userId ? "yourself" : replyTo!.display_name}: ${
+                      replyTo!.kind === "text"
+                        ? replyTo!.content.replace(CUSTOM_EMOJI_RE, "▪").slice(0, 60)
+                        : replyTo!.kind === "image"
+                          ? "📷 Photo"
+                          : "GIF"
+                    }`}
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setReplyTo(null);
+                  if (editingMsg) {
+                    setEditingMsg(null);
+                    setInput("");
+                  }
+                }}
+                aria-label={editingMsg ? "Cancel editing" : "Cancel reply"}
+                style={{
+                  width: 20,
+                  height: 20,
+                  padding: 0,
+                  borderRadius: "50%",
+                  fontSize: 12,
+                  lineHeight: 1,
+                  background: "transparent",
+                  border: "1px solid var(--border)",
+                  color: "inherit",
+                }}
+              >
+                ×
+              </button>
+            </div>
+          )}
           <form onSubmit={send} style={{ display: "flex", gap: 8 }}>
             <button
               type="button"
@@ -1212,22 +1638,56 @@ export default function RoomClient({
               </span>
             </button>
             <input
+              id="chat-photo-file"
+              type="file"
+              accept="image/*"
+              disabled={attachBusy}
+              style={{ display: "none" }}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) sendImage(file);
+                e.target.value = "";
+              }}
+            />
+            <label
+              htmlFor="chat-photo-file"
+              aria-label="Send a photo"
+              title="Send a photo"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                padding: "0 14px",
+                borderRadius: 10,
+                border: "1px solid var(--border)",
+                cursor: attachBusy ? "wait" : "pointer",
+              }}
+            >
+              <span className="msr" style={{ fontSize: 20 }} aria-hidden>
+                {attachBusy ? "hourglass_top" : "image"}
+              </span>
+            </label>
+            <input
+              ref={inputRef}
               value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="Say something — or paste a GIF link to share it"
+              onChange={(e) => {
+                setInput(e.target.value);
+                pingTyping();
+              }}
+              placeholder={editingMsg ? "Edit your message" : "Say something — or paste a GIF link to share it"}
               style={{ marginBottom: 0 }}
             />
             <button
               className="primary"
               type="submit"
-              aria-label="Send message"
+              aria-label={editingMsg ? "Save edit" : "Send message"}
               style={{ width: "auto", padding: "0 18px" }}
             >
               <span className="msr" style={{ fontSize: 20 }} aria-hidden>
-                send
+                {editingMsg ? "check" : "send"}
               </span>
             </button>
           </form>
+          </>
           )}
         </>
       )}

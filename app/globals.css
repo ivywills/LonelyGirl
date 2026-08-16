@@ -844,6 +844,19 @@ body {
   }
 }
 
+/* Chat room: lock the page to the viewport so the composer is always
+   on-screen and only the message list scrolls */
+.lg-chat-lock {
+  height: calc(100vh - var(--lg-topbar-h));
+  overflow: hidden;
+}
+
+@supports (height: 100dvh) {
+  .lg-chat-lock {
+    height: calc(100dvh - var(--lg-topbar-h));
+  }
+}
+
 /* Legal / support pages --------------------------------------------------- */
 
 .lg-legal {
