@@ -1626,14 +1626,28 @@ export default function RoomClient({
               </button>
             </div>
           )}
-          <form onSubmit={send} style={{ display: "flex", gap: 8 }}>
+          {/* Standard messenger composer: quiet round icon buttons, pill input, circular send */}
+          <form onSubmit={send} style={{ display: "flex", gap: 4, alignItems: "center" }}>
             <button
               type="button"
               onClick={() => setShowEmoji((v) => !v)}
-              style={{ width: "auto", padding: "0 14px" }}
               aria-label="Emoji picker"
+              title="Emoji"
+              style={{
+                width: 38,
+                height: 38,
+                flex: "none",
+                padding: 0,
+                borderRadius: "50%",
+                background: "transparent",
+                border: "none",
+                color: sub,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
             >
-              <span className="msr" style={{ fontSize: 20 }} aria-hidden>
+              <span className="msr" style={{ fontSize: 22 }} aria-hidden>
                 mood
               </span>
             </button>
@@ -1654,15 +1668,18 @@ export default function RoomClient({
               aria-label="Send a photo"
               title="Send a photo"
               style={{
+                width: 38,
+                height: 38,
+                flex: "none",
+                borderRadius: "50%",
+                color: sub,
                 display: "flex",
                 alignItems: "center",
-                padding: "0 14px",
-                borderRadius: 10,
-                border: "1px solid var(--border)",
+                justifyContent: "center",
                 cursor: attachBusy ? "wait" : "pointer",
               }}
             >
-              <span className="msr" style={{ fontSize: 20 }} aria-hidden>
+              <span className="msr" style={{ fontSize: 22 }} aria-hidden>
                 {attachBusy ? "hourglass_top" : "image"}
               </span>
             </label>
@@ -1673,14 +1690,25 @@ export default function RoomClient({
                 setInput(e.target.value);
                 pingTyping();
               }}
-              placeholder={editingMsg ? "Edit your message" : "Say something — or paste a GIF link to share it"}
-              style={{ marginBottom: 0 }}
+              placeholder={editingMsg ? "Edit your message" : "Say something…"}
+              style={{ marginBottom: 0, borderRadius: 999, padding: "10px 16px" }}
             />
             <button
               className="primary"
               type="submit"
               aria-label={editingMsg ? "Save edit" : "Send message"}
-              style={{ width: "auto", padding: "0 18px" }}
+              title={editingMsg ? "Save" : "Send"}
+              style={{
+                width: 40,
+                height: 40,
+                flex: "none",
+                padding: 0,
+                borderRadius: "50%",
+                marginLeft: 4,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
             >
               <span className="msr" style={{ fontSize: 20 }} aria-hidden>
                 {editingMsg ? "check" : "send"}
