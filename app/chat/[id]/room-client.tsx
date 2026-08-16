@@ -1634,20 +1634,20 @@ export default function RoomClient({
               aria-label="Emoji picker"
               title="Emoji"
               style={{
-                width: 38,
-                height: 38,
+                width: 40,
+                height: 40,
                 flex: "none",
                 padding: 0,
                 borderRadius: "50%",
                 background: "transparent",
                 border: "none",
-                color: sub,
+                color: acc,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
               }}
             >
-              <span className="msr" style={{ fontSize: 22 }} aria-hidden>
+              <span className="msr" style={{ fontSize: 22, lineHeight: 1, display: "block" }} aria-hidden>
                 mood
               </span>
             </button>
@@ -1668,18 +1668,18 @@ export default function RoomClient({
               aria-label="Send a photo"
               title="Send a photo"
               style={{
-                width: 38,
-                height: 38,
+                width: 40,
+                height: 40,
                 flex: "none",
                 borderRadius: "50%",
-                color: sub,
+                color: acc,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
                 cursor: attachBusy ? "wait" : "pointer",
               }}
             >
-              <span className="msr" style={{ fontSize: 22 }} aria-hidden>
+              <span className="msr" style={{ fontSize: 22, lineHeight: 1, display: "block" }} aria-hidden>
                 {attachBusy ? "hourglass_top" : "image"}
               </span>
             </label>
@@ -1691,7 +1691,13 @@ export default function RoomClient({
                 pingTyping();
               }}
               placeholder={editingMsg ? "Edit your message" : "Say something…"}
-              style={{ marginBottom: 0, borderRadius: 999, padding: "10px 16px" }}
+              style={{
+                marginBottom: 0,
+                borderRadius: 999,
+                height: 40,
+                padding: "0 16px",
+                boxSizing: "border-box",
+              }}
             />
             <button
               className="primary"
@@ -1710,7 +1716,7 @@ export default function RoomClient({
                 justifyContent: "center",
               }}
             >
-              <span className="msr" style={{ fontSize: 20 }} aria-hidden>
+              <span className="msr" style={{ fontSize: 20, lineHeight: 1, display: "block" }} aria-hidden>
                 {editingMsg ? "check" : "send"}
               </span>
             </button>
