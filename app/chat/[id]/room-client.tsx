@@ -2550,13 +2550,8 @@ export default function RoomClient({
                 cursor: "pointer",
               }}
             >
-              <span style={{ display: "inline-flex" }} aria-hidden>
-                {couch.slice(0, 2).map((c, i) => (
-                  <span key={c.uid} style={{ marginLeft: i === 0 ? 0 : -9, display: "inline-flex", borderRadius: "50%", border: "2px solid var(--card)" }}>
-                    <Avatar userId={c.uid} name={c.name} size={25} />
-                  </span>
-                ))}
-                {couch.length === 0 && <span style={{ fontSize: 16 }}>🛋️</span>}
+              <span style={{ fontSize: 16, marginLeft: 4 }} aria-hidden>
+                🎙️
               </span>
               <span
                 style={{
@@ -2569,7 +2564,7 @@ export default function RoomClient({
                   gap: 5,
                 }}
               >
-                who&apos;s here{hereNow > 2 ? ` · ${hereNow}` : ""}
+                voice chat{voiceCount > 0 ? ` · ${voiceCount}` : ""}
                 {voiceCount > 0 && (
                   <span
                     className="lg-pulse-dot"
