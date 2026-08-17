@@ -507,14 +507,18 @@ export default function TvWall({ signedIn }: { signedIn: boolean }) {
             paintWhite();
             // "cover" crops the clip to fill the glass instead of letterboxing
             // it on white — for clips with no edge detail worth keeping.
+            // `zoom` crops further in (1.25 ≈ trims 10% off every side) for
+            // clips whose subject sits inside big painted margins.
             const cover = (sc as { fit?: string }).fit === "cover";
+            const zoom = (sc as { zoom?: number }).zoom ?? 1;
             screenPainters.push(() => {
               paintWhite();
               if (video.readyState >= 2 && video.videoWidth > 0) {
-                const s = (cover ? Math.max : Math.min)(
-                  cw / video.videoWidth,
-                  ch / video.videoHeight
-                );
+                const s =
+                  (cover ? Math.max : Math.min)(
+                    cw / video.videoWidth,
+                    ch / video.videoHeight
+                  ) * zoom;
                 const w = video.videoWidth * s;
                 const h = video.videoHeight * s;
                 ctx.drawImage(video, (cw - w) / 2, (ch - h) / 2, w, h);

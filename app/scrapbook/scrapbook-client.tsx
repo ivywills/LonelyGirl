@@ -4,7 +4,6 @@ import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { ImagePicker, ROOM_COLORS, roomSurface } from "@/app/chat/rooms-client";
 import PageHeader from "@/app/page-header";
-import DecoClip from "@/app/deco-clip";
 
 export type ScrapbookRow = {
   id: string;
@@ -157,12 +156,9 @@ export default function ScrapbookClient({
         )}
       </PageHeader>
       <main style={{ maxWidth: 1100, margin: "0 auto", padding: "24px 20px 80px" }}>
-        <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 14, margin: "0 0 6px" }}>
-          <p style={{ margin: 0, color: "var(--muted)", fontSize: 14 }}>
-            Bits and pieces worth keeping.
-          </p>
-          <DecoClip src="/scrapbook-camera.mp4" size={84} />
-        </div>
+        <p style={{ margin: "0 0 6px", color: "var(--muted)", fontSize: 14 }}>
+          Bits and pieces worth keeping.
+        </p>
 
       {composing && (
         <section
