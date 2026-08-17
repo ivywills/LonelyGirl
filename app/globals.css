@@ -1457,17 +1457,36 @@ body {
   animation: floatUp 3.6s linear forwards;
 }
 
-/* Room-life panel: desktop-only right rail inside the room */
+/* Room-life panel: desktop-only right rail inside the room. Width is
+   adjustable — the grip on its left edge drags, and the chosen width is
+   remembered per browser. */
 .lg-roomlife {
   display: none;
   width: 232px;
   flex: none;
+  position: relative;
   border-left: 1px solid var(--chat-hairline);
   background: var(--chat-veil-soft);
   padding: 14px;
   flex-direction: column;
   gap: 14px;
   overflow-y: auto;
+}
+
+.lg-roomlife-grip {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 7px;
+  cursor: col-resize;
+  touch-action: none;
+  z-index: 3;
+}
+
+.lg-roomlife-grip:hover,
+.lg-roomlife-grip.active {
+  background: linear-gradient(to right, rgba(124, 92, 214, 0.3), transparent);
 }
 
 @media (min-width: 1080px) {

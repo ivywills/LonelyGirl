@@ -749,6 +749,36 @@ export default function RoomClient({
   // Inline Apple Music player for the room playlist; "listening" rides on presence
   const [playerOpen, setPlayerOpen] = useState(false);
 
+  // Room-life panel width — draggable via the grip, remembered per browser
+  const [panelW, setPanelW] = useState(232);
+  const [panelDragging, setPanelDragging] = useState(false);
+  useEffect(() => {
+    const saved = Number(localStorage.getItem("lg-roomlife-w"));
+    if (saved >= 200 && saved <= 430) setPanelW(saved);
+  }, []);
+
+  function startPanelDrag(e: React.PointerEvent<HTMLDivElement>) {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = panelW;
+    let lastW = startW;
+    const el = e.currentTarget;
+    el.setPointerCapture(e.pointerId);
+    setPanelDragging(true);
+    const move = (ev: PointerEvent) => {
+      lastW = Math.min(430, Math.max(200, startW + (startX - ev.clientX)));
+      setPanelW(lastW);
+    };
+    const up = () => {
+      el.removeEventListener("pointermove", move);
+      el.removeEventListener("pointerup", up);
+      setPanelDragging(false);
+      localStorage.setItem("lg-roomlife-w", String(lastW));
+    };
+    el.addEventListener("pointermove", move);
+    el.addEventListener("pointerup", up);
+  }
+
   // The couch is a voice channel: a small WebRTC mesh, signalled over the
   // room's realtime channel. Peer ids are per-tab so a girl in two windows
   // doesn't dial herself.
@@ -4386,7 +4416,19 @@ export default function RoomClient({
           </div>
 
           {/* Room-life panel (desktop ≥1080px, CSS-gated) */}
-          <aside className="lg-roomlife">
+          <aside className="lg-roomlife" style={{ width: panelW }}>
+            <div
+              className={`lg-roomlife-grip${panelDragging ? " active" : ""}`}
+              onPointerDown={startPanelDrag}
+              onDoubleClick={() => {
+                setPanelW(232);
+                localStorage.setItem("lg-roomlife-w", "232");
+              }}
+              title="Drag to resize — double-click to reset"
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Resize the room-life panel"
+            />
             <div>
               <PanelLabel color="var(--accent)">
                 on the couch rn{voiceCount > 0 ? ` · ${voiceCount} live` : ""}
