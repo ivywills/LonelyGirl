@@ -664,6 +664,12 @@ export default function RoomClient({
   const [pollOpts, setPollOpts] = useState<string[]>(["", ""]);
   const [pollCloseMins, setPollCloseMins] = useState(0);
 
+  // Inline forms — window.prompt() doesn't exist in the Electron shell
+  const [showCelebrate, setShowCelebrate] = useState(false);
+  const [celebrateName, setCelebrateName] = useState("");
+  const [reportFor, setReportFor] = useState<Msg | null>(null);
+  const [reportReason, setReportReason] = useState("");
+
   // Voice recording
   const [recording, setRecording] = useState(false);
   const [recSecs, setRecSecs] = useState(0);
@@ -1419,19 +1425,22 @@ export default function RoomClient({
     setPinnedList((prev) => prev.filter((x) => x.id !== m.id));
   }
 
-  async function reportMessage(m: Msg) {
-    const reason = window.prompt("What's wrong with this message? A sentence helps the admins act on it.");
-    if (reason === null) return;
+  async function sendReport(e: React.FormEvent) {
+    e.preventDefault();
+    if (!reportFor) return;
+    const m = reportFor;
     const { error: err } = await supabase.from("reports").insert({
       reporter_id: userId,
       reported_user_id: m.user_id,
       message_id: m.id,
       message_content: m.content,
       room_id: room.id,
-      reason: reason.trim().slice(0, 500),
+      reason: reportReason.trim().slice(0, 500),
     });
     if (err) setError(err.message);
     else setNotice("Report sent. An admin will take a look.");
+    setReportFor(null);
+    setReportReason("");
   }
 
   async function togglePin(m: Msg) {
@@ -1506,17 +1515,22 @@ export default function RoomClient({
     if (err && !err.message.includes("duplicate")) setError(err.message);
   }
 
-  async function celebrate() {
-    const name = window.prompt("Whose day is it? (her name goes on the card)");
-    if (!name?.trim()) return;
+  async function celebrate(e: React.FormEvent) {
+    e.preventDefault();
+    const name = celebrateName.trim();
+    if (!name) return;
     const { error: err } = await supabase.from("messages").insert({
       room_id: room.id,
       user_id: userId,
       display_name: displayName,
-      content: JSON.stringify({ type: "birthday", name: name.trim().slice(0, 60) }),
+      content: JSON.stringify({ type: "birthday", name: name.slice(0, 60) }),
       kind: "moment",
     });
     if (err) setError(err.message);
+    else {
+      setShowCelebrate(false);
+      setCelebrateName("");
+    }
   }
 
   function copyInvite() {
@@ -2159,7 +2173,7 @@ export default function RoomClient({
                   style={menuItem}
                   onClick={() => {
                     setHeaderMenu(false);
-                    celebrate();
+                    setShowCelebrate(true);
                   }}
                 >
                   <span className="msr" style={{ fontSize: 17, color: "var(--muted)" }} aria-hidden>
@@ -3016,7 +3030,8 @@ export default function RoomClient({
                                     type="button"
                                     onClick={() => {
                                       setMsgMenuFor(null);
-                                      reportMessage(m);
+                                      setReportFor(m);
+                                      setReportReason("");
                                     }}
                                     style={{ width: "auto", padding: "3px 4px", background: "transparent", border: "none", color: "var(--text)", fontSize: 12, cursor: "pointer" }}
                                   >
@@ -3365,6 +3380,77 @@ export default function RoomClient({
               </form>
             )}
 
+            {showCelebrate && (
+              <form
+                onSubmit={celebrate}
+                className="card"
+                style={{ flex: "none", maxWidth: "none", margin: "8px 0", padding: 14 }}
+              >
+                <h3 style={{ fontSize: 14, marginBottom: 8 }}>Celebrate a girl 🎂</h3>
+                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                  <input
+                    autoFocus
+                    placeholder="whose day is it?"
+                    value={celebrateName}
+                    onChange={(e) => setCelebrateName(e.target.value)}
+                    maxLength={60}
+                    style={{ flex: 1, minWidth: 160, marginBottom: 0 }}
+                  />
+                  <button
+                    className="primary"
+                    type="submit"
+                    style={{ width: "auto", padding: "8px 16px", fontSize: 13 }}
+                  >
+                    Post the card
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowCelebrate(false)}
+                    style={{ width: "auto", padding: "8px 12px", fontSize: 13, background: "var(--card)", color: "var(--muted)", border: "1px solid var(--border)" }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {reportFor && (
+              <form
+                onSubmit={sendReport}
+                className="card"
+                style={{ flex: "none", maxWidth: "none", margin: "8px 0", padding: 14 }}
+              >
+                <h3 style={{ fontSize: 14, marginBottom: 4 }}>Report {reportFor.display_name}&apos;s message</h3>
+                <p style={{ fontSize: 12, color: "var(--muted)", marginBottom: 8 }}>
+                  A sentence about what&apos;s wrong helps the admins act on it.
+                </p>
+                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                  <input
+                    autoFocus
+                    placeholder="what's wrong with it?"
+                    value={reportReason}
+                    onChange={(e) => setReportReason(e.target.value)}
+                    maxLength={500}
+                    style={{ flex: 1, minWidth: 160, marginBottom: 0 }}
+                  />
+                  <button
+                    className="primary"
+                    type="submit"
+                    style={{ width: "auto", padding: "8px 16px", fontSize: 13 }}
+                  >
+                    Send report
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setReportFor(null)}
+                    style={{ width: "auto", padding: "8px 12px", fontSize: 13, background: "var(--card)", color: "var(--muted)", border: "1px solid var(--border)" }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            )}
+
             {amBanned ? (
               <p style={{ flex: "none", fontSize: 13, color: sub, textAlign: "center", padding: "10px 0 14px" }}>
                 Your account is banned from posting. If you think this is a mistake, reach out via
@@ -3540,7 +3626,7 @@ export default function RoomClient({
                           style={menuItem}
                           onClick={() => {
                             setShowAttach(false);
-                            celebrate();
+                            setShowCelebrate(true);
                           }}
                         >
                           <span className="msr" style={{ fontSize: 17, color: "var(--muted)" }} aria-hidden>
