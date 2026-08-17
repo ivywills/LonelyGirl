@@ -2161,10 +2161,13 @@ export default function RoomClient({
   function renderCouchGrid(cols: number, size: number) {
     const cells = couchAll ? couch : couch.slice(0, cols * 2 - 1);
     const extra = couch.length - cells.length;
+    // Packed left, wrapping — fixed-width cells so a wide panel just fits
+    // more per line instead of spreading the same few out
+    const cellW = size + 16;
     return (
-      <div style={{ display: "grid", gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: cols === 5 ? 10 : 8 }}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: cols === 5 ? 9 : 7 }}>
         {cells.map((c) => (
-          <span key={c.uid} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, minWidth: 0 }}>
+          <span key={c.uid} style={{ width: cellW, flex: "none", display: "flex", flexDirection: "column", alignItems: "center", gap: 2, minWidth: 0 }}>
             {c.uid === userId ? (
               <span
                 style={
@@ -2206,7 +2209,7 @@ export default function RoomClient({
           <button
             type="button"
             onClick={() => setCouchAll(true)}
-            style={{ width: "auto", padding: 0, background: "transparent", border: "none", display: "flex", flexDirection: "column", alignItems: "center", gap: 2, cursor: "pointer" }}
+            style={{ width: cellW, flex: "none", padding: 0, background: "transparent", border: "none", display: "flex", flexDirection: "column", alignItems: "center", gap: 2, cursor: "pointer" }}
           >
             <span
               style={{
