@@ -81,6 +81,9 @@ type PresenceInfo = {
   joinedAt: number;
   lastMessageAt: number;
   listening?: boolean;
+  /** Set while on the couch (voice) — a per-tab id the WebRTC mesh dials. */
+  voiceId?: string | null;
+  muted?: boolean;
 };
 
 const EMOJI_SET: [string, string, string][] = [
@@ -710,6 +713,8 @@ export default function RoomClient({
   const [showJump, setShowJump] = useState(false);
   const [newBelow, setNewBelow] = useState(0);
   const [attachBusy, setAttachBusy] = useState(false);
+  // Picked but not yet sent — the confirm card above the composer
+  const [pendingPhoto, setPendingPhoto] = useState<{ file: File; url: string } | null>(null);
   const [headerMenu, setHeaderMenu] = useState(false);
   const [showAttach, setShowAttach] = useState(false);
 
@@ -743,6 +748,17 @@ export default function RoomClient({
 
   // Inline Apple Music player for the room playlist; "listening" rides on presence
   const [playerOpen, setPlayerOpen] = useState(false);
+
+  // The couch is a voice channel: a small WebRTC mesh, signalled over the
+  // room's realtime channel. Peer ids are per-tab so a girl in two windows
+  // doesn't dial herself.
+  const [inVoice, setInVoice] = useState(false);
+  const [micMuted, setMicMuted] = useState(false);
+  const inVoiceRef = useRef(false);
+  const voiceIdRef = useRef(`v-${Math.random().toString(36).slice(2, 10)}`);
+  const micStreamRef = useRef<MediaStream | null>(null);
+  const peersRef = useRef<Map<string, RTCPeerConnection>>(new Map());
+  const peerAudioRef = useRef<Map<string, HTMLAudioElement>>(new Map());
 
   // Voice recording
   const [recording, setRecording] = useState(false);
@@ -1210,6 +1226,50 @@ export default function RoomClient({
           addBurst(payload.emoji);
         }
       )
+      .on(
+        "broadcast",
+        { event: "rtc" },
+        async ({
+          payload,
+        }: {
+          payload: {
+            from: string;
+            to: string;
+            sdp?: RTCSessionDescriptionInit;
+            candidate?: RTCIceCandidateInit;
+          };
+        }) => {
+          if (payload.to !== voiceIdRef.current || !inVoiceRef.current) return;
+          try {
+            let pc = peersRef.current.get(payload.from);
+            if (payload.sdp) {
+              if (payload.sdp.type === "offer") {
+                if (!pc) pc = newVoicePeer(payload.from);
+                if (pc.signalingState !== "stable") {
+                  // Offer glare (both renegotiated at once): the larger id
+                  // politely rolls back, the smaller one's offer wins.
+                  if (voiceIdRef.current < payload.from) return;
+                  await Promise.all([
+                    pc.setLocalDescription({ type: "rollback" }),
+                    pc.setRemoteDescription(payload.sdp),
+                  ]);
+                } else {
+                  await pc.setRemoteDescription(payload.sdp);
+                }
+                const answer = await pc.createAnswer();
+                await pc.setLocalDescription(answer);
+                sendRtc(payload.from, { sdp: answer });
+              } else if (pc) {
+                await pc.setRemoteDescription(payload.sdp);
+              }
+            } else if (payload.candidate && pc) {
+              await pc.addIceCandidate(payload.candidate);
+            }
+          } catch {
+            /* a dropped peer mid-handshake — presence diffing cleans it up */
+          }
+        }
+      )
       .on("presence", { event: "sync" }, () => {
         const state = channel.presenceState<PresenceInfo>();
         const next: Record<string, PresenceInfo> = {};
@@ -1221,6 +1281,8 @@ export default function RoomClient({
               joinedAt: m0.joinedAt,
               lastMessageAt: m0.lastMessageAt,
               listening: m0.listening,
+              voiceId: m0.voiceId,
+              muted: m0.muted,
             };
         }
         setPresence(next);
@@ -1391,6 +1453,169 @@ export default function RoomClient({
     channelRef.current.track(trackRef.current);
   }
 
+  /* ----------------------------------------------------------------------
+   * Couch voice channel (WebRTC mesh over the room's realtime channel)
+   * -------------------------------------------------------------------- */
+
+  function sendRtc(to: string, data: { sdp?: RTCSessionDescriptionInit; candidate?: RTCIceCandidateInit }) {
+    channelRef.current?.send({
+      type: "broadcast",
+      event: "rtc",
+      payload: { from: voiceIdRef.current, to, ...data },
+    });
+  }
+
+  /** One connection per remote couch member. Reads refs only, so the realtime
+   *  handler can call the closure from any render safely. */
+  function newVoicePeer(remoteId: string): RTCPeerConnection {
+    const pc = new RTCPeerConnection({
+      iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+    });
+    const mic = micStreamRef.current;
+    if (mic) mic.getTracks().forEach((t) => pc.addTrack(t, mic));
+    else pc.addTransceiver("audio", { direction: "recvonly" }); // listen-only join
+    pc.onicecandidate = (e) => {
+      if (e.candidate) sendRtc(remoteId, { candidate: e.candidate.toJSON() });
+    };
+    pc.ontrack = (e) => {
+      let a = peerAudioRef.current.get(remoteId);
+      if (!a) {
+        a = new Audio();
+        a.autoplay = true;
+        peerAudioRef.current.set(remoteId, a);
+      }
+      a.srcObject = e.streams[0];
+      a.play().catch(() => {
+        /* autoplay policies — the join click usually satisfies them */
+      });
+    };
+    pc.onconnectionstatechange = () => {
+      if (pc.connectionState !== "connected") return;
+      // From here on, adding a track (mic granted mid-call) renegotiates.
+      pc.onnegotiationneeded = async () => {
+        try {
+          const offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
+          sendRtc(remoteId, { sdp: offer });
+        } catch {
+          /* peer going away */
+        }
+      };
+      // Mic may have landed while the first handshake was in flight
+      const mic = micStreamRef.current;
+      if (mic) {
+        const have = new Set(pc.getSenders().map((s) => s.track));
+        mic.getTracks().forEach((t) => {
+          if (!have.has(t)) pc.addTrack(t, mic);
+        });
+      }
+    };
+    peersRef.current.set(remoteId, pc);
+    return pc;
+  }
+
+  function dropVoicePeer(remoteId: string) {
+    peersRef.current.get(remoteId)?.close();
+    peersRef.current.delete(remoteId);
+    const a = peerAudioRef.current.get(remoteId);
+    if (a) {
+      a.pause();
+      a.srcObject = null;
+      peerAudioRef.current.delete(remoteId);
+    }
+  }
+
+  async function joinVoice() {
+    if (inVoiceRef.current) return;
+    // Join instantly, listen-only — the permission prompt must never make
+    // the couch feel dead.
+    inVoiceRef.current = true;
+    setInVoice(true);
+    setMicMuted(true);
+    trackRef.current = { ...trackRef.current, voiceId: voiceIdRef.current, muted: true };
+    channelRef.current?.track(trackRef.current);
+    // …then bring the mic in whenever permission lands.
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true },
+      });
+      if (!inVoiceRef.current) {
+        // Hung up while the prompt was still open
+        stream.getTracks().forEach((t) => t.stop());
+        return;
+      }
+      micStreamRef.current = stream;
+      setMicMuted(false);
+      for (const [, pc] of peersRef.current) {
+        const have = new Set(pc.getSenders().map((s) => s.track));
+        stream.getTracks().forEach((t) => {
+          if (!have.has(t)) pc.addTrack(t, stream); // renegotiates if connected
+        });
+      }
+      trackRef.current = { ...trackRef.current, muted: false };
+      channelRef.current?.track(trackRef.current);
+    } catch {
+      setNotice("Mic unavailable — you're on the couch listen-only 🎧");
+    }
+  }
+
+  function leaveVoice() {
+    inVoiceRef.current = false;
+    setInVoice(false);
+    setMicMuted(false);
+    for (const id of [...peersRef.current.keys()]) dropVoicePeer(id);
+    micStreamRef.current?.getTracks().forEach((t) => t.stop());
+    micStreamRef.current = null;
+    trackRef.current = { ...trackRef.current, voiceId: null, muted: false };
+    channelRef.current?.track(trackRef.current);
+  }
+
+  function toggleMute() {
+    if (!micStreamRef.current) return; // listen-only: nothing to unmute
+    const next = !micMuted;
+    setMicMuted(next);
+    micStreamRef.current.getAudioTracks().forEach((t) => (t.enabled = !next));
+    trackRef.current = { ...trackRef.current, muted: next };
+    channelRef.current?.track(trackRef.current);
+  }
+
+  // Dial couch members as they appear, hang up on the ones who leave. The
+  // lexicographically smaller voiceId makes the offer, so a pair never
+  // offers to each other simultaneously.
+  useEffect(() => {
+    if (!inVoice) return;
+    const remoteIds = Object.values(presence)
+      .map((p) => p.voiceId)
+      .filter((id): id is string => Boolean(id) && id !== voiceIdRef.current);
+    for (const rid of remoteIds) {
+      if (peersRef.current.has(rid)) continue;
+      if (voiceIdRef.current < rid) {
+        const pc = newVoicePeer(rid);
+        pc.createOffer()
+          .then((o) => pc.setLocalDescription(o).then(() => sendRtc(rid, { sdp: o })))
+          .catch(() => dropVoicePeer(rid));
+      }
+      // Larger id waits for their offer.
+    }
+    for (const rid of [...peersRef.current.keys()]) {
+      if (!remoteIds.includes(rid)) dropVoicePeer(rid);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inVoice, presence]);
+
+  // Leaving the room page hangs up properly
+  useEffect(() => {
+    return () => {
+      if (inVoiceRef.current) {
+        for (const id of [...peersRef.current.keys()]) {
+          peersRef.current.get(id)?.close();
+        }
+        peersRef.current.clear();
+        micStreamRef.current?.getTracks().forEach((t) => t.stop());
+      }
+    };
+  }, []);
+
   async function send(e: React.FormEvent) {
     e.preventDefault();
     const content = input.trim();
@@ -1437,7 +1662,7 @@ export default function RoomClient({
     }
   }
 
-  async function sendImage(file: File) {
+  async function sendImage(file: File): Promise<boolean> {
     setAttachBusy(true);
     setError("");
     try {
@@ -1453,10 +1678,35 @@ export default function RoomClient({
       if (err) throw new Error(err.message);
       setReplyTo(null);
       bumpMyPresence();
+      setAttachBusy(false);
+      return true;
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed.");
+      setAttachBusy(false);
+      return false;
     }
-    setAttachBusy(false);
+  }
+
+  /** Photos preview above the composer first — nothing uploads until Send. */
+  function pickPhoto(file: File) {
+    setPendingPhoto((prev) => {
+      if (prev) URL.revokeObjectURL(prev.url);
+      return { file, url: URL.createObjectURL(file) };
+    });
+  }
+
+  async function confirmSendPhoto() {
+    if (!pendingPhoto || attachBusy) return;
+    const ok = await sendImage(pendingPhoto.file);
+    if (ok) {
+      URL.revokeObjectURL(pendingPhoto.url);
+      setPendingPhoto(null);
+    }
+  }
+
+  function cancelPhoto() {
+    if (pendingPhoto) URL.revokeObjectURL(pendingPhoto.url);
+    setPendingPhoto(null);
   }
 
   async function toggleReaction(m: Msg, emoji: string) {
@@ -1729,16 +1979,26 @@ export default function RoomClient({
   void statusTick;
   const nowMs = Date.now();
   const couch = Object.entries(presence).map(([uid, p]) => {
-    const status = p.listening
-      ? "🎧 listening"
-      : p.lastMessageAt && nowMs - p.lastMessageAt < 5 * 60 * 1000
-        ? "chatty"
-        : p.joinedAt && nowMs - p.joinedAt < 2 * 60 * 1000
-          ? "just in"
-          : "🛋️ lurking";
-    return { uid, name: p.name || "?", status };
+    const onCouch = Boolean(p.voiceId);
+    const status = onCouch
+      ? p.muted
+        ? "🔇 muted"
+        : "🎙️ live"
+      : p.listening
+        ? "🎧 listening"
+        : p.lastMessageAt && nowMs - p.lastMessageAt < 5 * 60 * 1000
+          ? "chatty"
+          : p.joinedAt && nowMs - p.joinedAt < 2 * 60 * 1000
+            ? "just in"
+            : "🛋️ lurking";
+    return { uid, name: p.name || "?", status, onCouch };
   });
-  couch.sort((a, b) => (a.status === "chatty" ? -1 : 1) - (b.status === "chatty" ? -1 : 1));
+  couch.sort(
+    (a, b) =>
+      (a.onCouch ? -2 : a.status === "chatty" ? -1 : 1) -
+      (b.onCouch ? -2 : b.status === "chatty" ? -1 : 1)
+  );
+  const voiceCount = couch.filter((c) => c.onCouch).length;
   const hereNow = Math.max(couch.length, member ? 1 : 0);
   const listeners = Object.values(presence).filter((p) => p.listening).length;
   const playlistEmbed = playlist?.apple_url ? appleEmbed(playlist.apple_url) : null;
@@ -1871,7 +2131,7 @@ export default function RoomClient({
             {c.uid === userId ? (
               <span
                 style={
-                  c.status === "chatty"
+                  c.status === "chatty" || c.onCouch
                     ? { borderRadius: "50%", boxShadow: "0 0 0 2px var(--card), 0 0 0 3.5px #4ade80" }
                     : undefined
                 }
@@ -1882,7 +2142,7 @@ export default function RoomClient({
               <ProfileTrigger userId={c.uid}>
                 <span
                   style={
-                    c.status === "chatty"
+                    c.status === "chatty" || c.onCouch
                       ? { display: "inline-flex", borderRadius: "50%", boxShadow: "0 0 0 2px var(--card), 0 0 0 3.5px #4ade80" }
                       : { display: "inline-flex" }
                   }
@@ -1936,9 +2196,71 @@ export default function RoomClient({
   }
 
   function renderCouch(cols: number, size: number) {
+    const tall = cols === 5; // the sheet wants ≥44px targets
     return (
       <>
-        {renderCouchGrid(cols, size)}
+        {couch.length > 0 && <div style={{ marginBottom: 10 }}>{renderCouchGrid(cols, size)}</div>}
+        {!inVoice ? (
+          <button
+            type="button"
+            onClick={joinVoice}
+            style={{
+              width: "100%",
+              padding: tall ? "12px 0" : "8px 0",
+              borderRadius: 999,
+              background: "var(--accent)",
+              color: "#ffffff",
+              border: "none",
+              fontSize: tall ? 13 : 12,
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+          >
+            🎙️ hop on the couch
+          </button>
+        ) : (
+          <div style={{ display: "flex", gap: 6 }}>
+            <button
+              type="button"
+              onClick={toggleMute}
+              disabled={!micStreamRef.current}
+              title={!micStreamRef.current ? "You joined listen-only" : undefined}
+              style={{
+                flex: 1,
+                width: "auto",
+                padding: tall ? "12px 0" : "8px 0",
+                borderRadius: 999,
+                background: micMuted ? "var(--accent-tint)" : "var(--bubble-soft)",
+                color: micMuted ? "var(--accent-tint-text)" : "var(--text)",
+                border: "none",
+                fontSize: tall ? 13 : 12,
+                fontWeight: 700,
+                cursor: micStreamRef.current ? "pointer" : "default",
+                opacity: micStreamRef.current ? 1 : 0.6,
+              }}
+            >
+              {!micStreamRef.current ? "🎧 listen-only" : micMuted ? "🔇 unmute" : "🎙️ mute"}
+            </button>
+            <button
+              type="button"
+              onClick={leaveVoice}
+              style={{
+                flex: 1,
+                width: "auto",
+                padding: tall ? "12px 0" : "8px 0",
+                borderRadius: 999,
+                background: "var(--card)",
+                color: "var(--error)",
+                border: "1px solid var(--border)",
+                fontSize: tall ? 13 : 12,
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              hang up
+            </button>
+          </div>
+        )}
         {couchAll && couch.length > cols * 2 - 1 && (
           <button
             type="button"
@@ -2031,7 +2353,7 @@ export default function RoomClient({
           )}
           {playerOpen && <Equalizer />}
           <span style={{ fontSize: 11, color: "var(--muted)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {playerOpen ? "playing here" : "tap play to listen along"}
+            {playerOpen ? "press ▶ in the player below" : "listen along with the couch"}
           </span>
         </div>
         {/* The mobile player lives under the header chips so closing the
@@ -2988,6 +3310,8 @@ export default function RoomClient({
                           : j === 0
                             ? `18px 18px 18px 5px`
                             : `5px 18px 18px 5px`;
+                        // Photos and GIFs go bare — just the rounded image, no bubble
+                        const bare = m.kind === "image" || m.kind === "gif";
                         const orig =
                           m.reply_to_id != null ? messages.find((x) => x.id === m.reply_to_id) : undefined;
                         const rGroups = Object.entries(
@@ -3011,20 +3335,25 @@ export default function RoomClient({
                             <div
                               onClick={() => setTappedFor((cur) => (cur === m.id ? null : m.id))}
                               style={{
-                                background: own
-                                  ? "linear-gradient(135deg, #b39dfb, #9b7df2)"
-                                  : "var(--bubble)",
+                                background: bare
+                                  ? "transparent"
+                                  : own
+                                    ? "linear-gradient(135deg, #b39dfb, #9b7df2)"
+                                    : "var(--bubble)",
                                 color: own ? "#241a3d" : "var(--bubble-ink)",
                                 borderRadius: radius,
-                                padding:
-                                  m.kind === "voice"
+                                padding: bare
+                                  ? 0
+                                  : m.kind === "voice"
                                     ? "8px 13px"
                                     : narrow
                                       ? "8px 13px"
                                       : "9px 14px",
-                                boxShadow: own
-                                  ? "0 3px 10px rgba(124,92,214,0.25)"
-                                  : "0 1px 3px var(--chat-shadow)",
+                                boxShadow: bare
+                                  ? "none"
+                                  : own
+                                    ? "0 3px 10px rgba(124,92,214,0.25)"
+                                    : "0 1px 3px var(--chat-shadow)",
                                 fontSize: narrow ? 14 : 14.5,
                                 lineHeight: 1.45,
                                 wordBreak: "break-word",
@@ -3059,7 +3388,13 @@ export default function RoomClient({
                                 <img
                                   src={m.content}
                                   alt={m.kind === "image" ? "photo" : "gif"}
-                                  style={{ maxWidth: "100%", borderRadius: 10, display: "block" }}
+                                  style={{
+                                    maxWidth: "100%",
+                                    maxHeight: 380,
+                                    borderRadius: radius,
+                                    display: "block",
+                                    boxShadow: "0 1px 3px var(--chat-shadow)",
+                                  }}
                                 />
                               ) : (
                                 <span style={{ whiteSpace: "pre-wrap" }}>
@@ -3730,6 +4065,52 @@ export default function RoomClient({
                   </span>
                 </div>
 
+                {pendingPhoto && (
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 12,
+                      margin: "0 0 8px",
+                      padding: 8,
+                      background: "var(--card)",
+                      borderRadius: 14,
+                      boxShadow: "0 4px 14px var(--chat-shadow)",
+                      width: "fit-content",
+                      maxWidth: "100%",
+                    }}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={pendingPhoto.url}
+                      alt="Photo to send"
+                      style={{ height: 72, maxWidth: 140, objectFit: "cover", borderRadius: 10, display: "block" }}
+                    />
+                    <div style={{ display: "flex", flexDirection: "column", gap: 7, minWidth: 0 }}>
+                      <span style={{ fontSize: 12, color: "var(--muted)" }}>Send this photo to the room?</span>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <button
+                          type="button"
+                          className="primary"
+                          onClick={confirmSendPhoto}
+                          disabled={attachBusy}
+                          style={{ width: "auto", padding: "6px 16px", fontSize: 13, borderRadius: 999 }}
+                        >
+                          {attachBusy ? "Sending…" : "Send photo"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={cancelPhoto}
+                          disabled={attachBusy}
+                          style={{ width: "auto", padding: "6px 12px", fontSize: 13, borderRadius: 999, background: "var(--bg)", color: "var(--muted)", border: "1px solid var(--border)" }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {(replyTo || editingMsg) && (
                   <div
                     style={{
@@ -3865,7 +4246,7 @@ export default function RoomClient({
                       onChange={(e) => {
                         setShowAttach(false);
                         const file = e.target.files?.[0];
-                        if (file) sendImage(file);
+                        if (file) pickPhoto(file);
                         e.target.value = "";
                       }}
                     />
@@ -3992,12 +4373,10 @@ export default function RoomClient({
           {/* Room-life panel (desktop ≥1080px, CSS-gated) */}
           <aside className="lg-roomlife">
             <div>
-              <PanelLabel color="var(--accent)">on the couch rn</PanelLabel>
-              {couch.length > 0 ? (
-                renderCouch(4, 36)
-              ) : (
-                <p style={{ fontSize: 11.5, color: sub, margin: 0 }}>just you so far 🛋️</p>
-              )}
+              <PanelLabel color="var(--accent)">
+                on the couch rn{voiceCount > 0 ? ` · ${voiceCount} live` : ""}
+              </PanelLabel>
+              {renderCouch(4, 36)}
             </div>
             {renderPlaylistCard(true)}
             {renderWaitingCard()}
@@ -4074,10 +4453,11 @@ export default function RoomClient({
                 </span>
               </button>
             </div>
-            <PanelLabel color="var(--accent)">on the couch rn · {hereNow}</PanelLabel>
-            <div style={{ marginBottom: 16 }}>
-              {couch.length > 0 ? renderCouch(5, 44) : <p style={{ fontSize: 12, color: "var(--muted)", margin: 0 }}>just you so far 🛋️</p>}
-            </div>
+            <PanelLabel color="var(--accent)">
+              on the couch rn · {hereNow}
+              {voiceCount > 0 ? ` · ${voiceCount} live` : ""}
+            </PanelLabel>
+            <div style={{ marginBottom: 16 }}>{renderCouch(5, 44)}</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {renderPlaylistCard(false)}
               {renderWaitingCard()}
