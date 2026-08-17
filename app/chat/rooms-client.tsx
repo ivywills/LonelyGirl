@@ -19,8 +19,6 @@ export type Room = {
   is_private: boolean;
   rules: string;
   welcome_message: string;
-  /** The wall playlist shown in the room-life panel — see supabase/room-redesign.sql. */
-  playlist_id?: string | null;
   /** Which rail the room shows up in. Sectionless rooms fall into "More rooms". */
   section_id: string | null;
   /**
