@@ -76,7 +76,12 @@ type PlaylistTile = {
   creator_name: string;
 };
 
-type PresenceInfo = { name: string; joinedAt: number; lastMessageAt: number };
+type PresenceInfo = {
+  name: string;
+  joinedAt: number;
+  lastMessageAt: number;
+  listening?: boolean;
+};
 
 const EMOJI_SET: [string, string, string][] = [
   ["😀", "grinning happy", "smileys"],
@@ -242,6 +247,71 @@ function momentPayload(content: string): { type: string; name: string } | null {
     /* not a moment we understand */
   }
   return null;
+}
+
+/** The announcement card kinds — each renders its own moment card. */
+const MOMENT_TYPES: {
+  key: string;
+  chip: string;
+  icon: string;
+  placeholder: string;
+  title: (v: string) => string;
+  cheer: string;
+  confetti: boolean;
+  grad: string;
+}[] = [
+  {
+    key: "birthday",
+    chip: "birthday",
+    icon: "🎂",
+    placeholder: "whose birthday is it?",
+    title: (n) => `it's ${n}'s birthday 🎂`,
+    cheer: "🎉 throw confetti",
+    confetti: true,
+    grad: "linear-gradient(135deg, #fff7e0, #ffeef6)",
+  },
+  {
+    key: "win",
+    chip: "big win",
+    icon: "🎉",
+    placeholder: "what are we celebrating?",
+    title: (t) => `${t} 🎉`,
+    cheer: "🎉 throw confetti",
+    confetti: true,
+    grad: "linear-gradient(135deg, #efe9fb, #ffeef6)",
+  },
+  {
+    key: "welcome",
+    chip: "welcome",
+    icon: "💜",
+    placeholder: "who just joined us?",
+    title: (n) => `welcome to the room, ${n} 💜`,
+    cheer: "👋 say hi",
+    confetti: true,
+    grad: "linear-gradient(135deg, #e8f6f1, #f0e9fd)",
+  },
+  {
+    key: "announcement",
+    chip: "announcement",
+    icon: "📣",
+    placeholder: "what does the room need to know?",
+    title: (t) => `📣 ${t}`,
+    cheer: "💜 noted",
+    confetti: false,
+    grad: "linear-gradient(135deg, #fff7e0, #f0e9fd)",
+  },
+];
+
+/** music.apple.com → embed.music.apple.com, or null if it isn't an Apple link. */
+function appleEmbed(url: string): string | null {
+  try {
+    const u = new URL(url);
+    if (!/(^|\.)music\.apple\.com$/.test(u.hostname)) return null;
+    u.hostname = "embed.music.apple.com";
+    return u.toString();
+  } catch {
+    return null;
+  }
 }
 
 function excerptOf(m: Msg, own: boolean): string {
@@ -667,8 +737,12 @@ export default function RoomClient({
   // Inline forms — window.prompt() doesn't exist in the Electron shell
   const [showCelebrate, setShowCelebrate] = useState(false);
   const [celebrateName, setCelebrateName] = useState("");
+  const [momentType, setMomentType] = useState(MOMENT_TYPES[0].key);
   const [reportFor, setReportFor] = useState<Msg | null>(null);
   const [reportReason, setReportReason] = useState("");
+
+  // Inline Apple Music player for the room playlist; "listening" rides on presence
+  const [playerOpen, setPlayerOpen] = useState(false);
 
   // Voice recording
   const [recording, setRecording] = useState(false);
@@ -1141,7 +1215,13 @@ export default function RoomClient({
         const next: Record<string, PresenceInfo> = {};
         for (const [uid, metas] of Object.entries(state)) {
           const m0 = metas[metas.length - 1];
-          if (m0) next[uid] = { name: m0.name, joinedAt: m0.joinedAt, lastMessageAt: m0.lastMessageAt };
+          if (m0)
+            next[uid] = {
+              name: m0.name,
+              joinedAt: m0.joinedAt,
+              lastMessageAt: m0.lastMessageAt,
+              listening: m0.listening,
+            };
         }
         setPresence(next);
       })
@@ -1300,6 +1380,14 @@ export default function RoomClient({
   function bumpMyPresence() {
     if (!channelRef.current) return;
     trackRef.current = { ...trackRef.current, lastMessageAt: Date.now() };
+    channelRef.current.track(trackRef.current);
+  }
+
+  /** Open/close the inline playlist player and tell the room you're listening. */
+  function togglePlayer(open: boolean) {
+    setPlayerOpen(open);
+    if (!channelRef.current) return;
+    trackRef.current = { ...trackRef.current, listening: open };
     channelRef.current.track(trackRef.current);
   }
 
@@ -1504,8 +1592,8 @@ export default function RoomClient({
     setTimeout(() => setConfetti((prev) => prev.filter((x) => x !== id)), 1500);
   }
 
-  async function cheerMoment(m: Msg) {
-    fireConfetti();
+  async function cheerMoment(m: Msg, withConfetti: boolean) {
+    if (withConfetti) fireConfetti();
     const cur = cheers[m.id] ?? { count: 0, mine: false };
     if (cur.mine) return; // the shared count is once per person; confetti is free
     setCheers((prev) => ({ ...prev, [m.id]: { count: cur.count + 1, mine: true } }));
@@ -1523,7 +1611,7 @@ export default function RoomClient({
       room_id: room.id,
       user_id: userId,
       display_name: displayName,
-      content: JSON.stringify({ type: "birthday", name: name.slice(0, 60) }),
+      content: JSON.stringify({ type: momentType, name: name.slice(0, 80) }),
       kind: "moment",
     });
     if (err) setError(err.message);
@@ -1641,8 +1729,9 @@ export default function RoomClient({
   void statusTick;
   const nowMs = Date.now();
   const couch = Object.entries(presence).map(([uid, p]) => {
-    const status =
-      p.lastMessageAt && nowMs - p.lastMessageAt < 5 * 60 * 1000
+    const status = p.listening
+      ? "🎧 listening"
+      : p.lastMessageAt && nowMs - p.lastMessageAt < 5 * 60 * 1000
         ? "chatty"
         : p.joinedAt && nowMs - p.joinedAt < 2 * 60 * 1000
           ? "just in"
@@ -1651,6 +1740,8 @@ export default function RoomClient({
   });
   couch.sort((a, b) => (a.status === "chatty" ? -1 : 1) - (b.status === "chatty" ? -1 : 1));
   const hereNow = Math.max(couch.length, member ? 1 : 0);
+  const listeners = Object.values(presence).filter((p) => p.listening).length;
+  const playlistEmbed = playlist?.apple_url ? appleEmbed(playlist.apple_url) : null;
 
   // Merge messages and polls into one timeline, then group consecutive
   // same-sender messages (within 5 min) under one avatar.
@@ -1844,6 +1935,33 @@ export default function RoomClient({
     );
   }
 
+  function renderCouch(cols: number, size: number) {
+    return (
+      <>
+        {renderCouchGrid(cols, size)}
+        {couchAll && couch.length > cols * 2 - 1 && (
+          <button
+            type="button"
+            onClick={() => setCouchAll(false)}
+            style={{
+              width: "auto",
+              marginTop: 6,
+              padding: 0,
+              background: "transparent",
+              border: "none",
+              fontSize: 10.5,
+              fontWeight: 600,
+              color: sub,
+              cursor: "pointer",
+            }}
+          >
+            show less
+          </button>
+        )}
+      </>
+    );
+  }
+
   function renderPlaylistCard(compact: boolean) {
     if (!playlist) return null;
     return (
@@ -1861,34 +1979,73 @@ export default function RoomClient({
         </p>
         <p style={{ margin: "3px 0 0", fontSize: 11.5, color: "var(--muted)" }}>
           {playlist.creator_name ? `${playlist.creator_name}'s pick` : "the room's pick"}
+          {listeners > 0 ? ` · ${listeners} listening` : ""}
         </p>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 9 }}>
-          <a
-            href={playlist.apple_url || "/playlists"}
-            target={playlist.apple_url ? "_blank" : undefined}
-            rel="noreferrer"
-            aria-label="Open the room playlist"
-            style={{
-              width: compact ? 28 : 34,
-              height: compact ? 28 : 34,
-              flex: "none",
-              borderRadius: "50%",
-              background: "#2c2635",
-              color: "#ffffff",
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <span className="msr" style={{ fontSize: compact ? 15 : 18 }} aria-hidden>
-              play_arrow
-            </span>
-          </a>
-          <Equalizer />
+          {playlistEmbed ? (
+            <button
+              type="button"
+              onClick={() => togglePlayer(!playerOpen)}
+              aria-label={playerOpen ? "Close the player" : "Listen along"}
+              style={{
+                width: compact ? 28 : 34,
+                height: compact ? 28 : 34,
+                flex: "none",
+                padding: 0,
+                border: "none",
+                borderRadius: "50%",
+                background: "#2c2635",
+                color: "#ffffff",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: "pointer",
+              }}
+            >
+              <span className="msr" style={{ fontSize: compact ? 15 : 18 }} aria-hidden>
+                {playerOpen ? "stop" : "play_arrow"}
+              </span>
+            </button>
+          ) : (
+            <a
+              href={playlist.apple_url || "/playlists"}
+              target={playlist.apple_url ? "_blank" : undefined}
+              rel="noreferrer"
+              aria-label="Open the room playlist"
+              style={{
+                width: compact ? 28 : 34,
+                height: compact ? 28 : 34,
+                flex: "none",
+                borderRadius: "50%",
+                background: "#2c2635",
+                color: "#ffffff",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <span className="msr" style={{ fontSize: compact ? 15 : 18 }} aria-hidden>
+                play_arrow
+              </span>
+            </a>
+          )}
+          {playerOpen && <Equalizer />}
           <span style={{ fontSize: 11, color: "var(--muted)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            tap play to listen along
+            {playerOpen ? "playing here" : "tap play to listen along"}
           </span>
         </div>
+        {/* The mobile player lives under the header chips so closing the
+            sheet doesn't unmount it mid-song */}
+        {playerOpen && playlistEmbed && !narrow && (
+          <iframe
+            src={playlistEmbed}
+            title={`Playlist: ${playlist.title}`}
+            height={175}
+            style={{ width: "100%", border: 0, borderRadius: 10, marginTop: 9, background: "transparent" }}
+            allow="autoplay *; encrypted-media *; fullscreen *"
+            loading="lazy"
+          />
+        )}
       </div>
     );
   }
@@ -2167,21 +2324,19 @@ export default function RoomClient({
                   Pop out
                 </button>
               )}
-              {(isCreator || isAdmin) && (
-                <button
-                  type="button"
-                  style={menuItem}
-                  onClick={() => {
-                    setHeaderMenu(false);
-                    setShowCelebrate(true);
-                  }}
-                >
-                  <span className="msr" style={{ fontSize: 17, color: "var(--muted)" }} aria-hidden>
-                    cake
-                  </span>
-                  Celebrate a girl
-                </button>
-              )}
+              <button
+                type="button"
+                style={menuItem}
+                onClick={() => {
+                  setHeaderMenu(false);
+                  setShowCelebrate(true);
+                }}
+              >
+                <span className="msr" style={{ fontSize: 17, color: "var(--muted)" }} aria-hidden>
+                  celebration
+                </span>
+                Celebrate & announce
+              </button>
               {isCreator && (
                 <button
                   type="button"
@@ -2245,21 +2400,27 @@ export default function RoomClient({
           }}
         >
           {playlist && (
-            <a
-              href={playlist.apple_url || "/playlists"}
-              target={playlist.apple_url ? "_blank" : undefined}
-              rel="noreferrer"
+            <button
+              type="button"
+              onClick={() => {
+                if (playlistEmbed) togglePlayer(!playerOpen);
+                else if (playlist.apple_url) window.open(playlist.apple_url, "_blank");
+                else router.push("/playlists");
+              }}
+              aria-label={playerOpen ? "Close the player" : "Play the room playlist"}
               style={{
                 flex: 1,
                 minWidth: 0,
+                width: "auto",
                 display: "inline-flex",
                 alignItems: "center",
                 gap: 6,
                 background: "var(--card)",
+                border: "none",
                 borderRadius: 999,
                 padding: "6px 12px",
                 boxShadow: "0 2px 8px var(--chat-shadow)",
-                textDecoration: "none",
+                cursor: "pointer",
               }}
             >
               <span
@@ -2276,7 +2437,7 @@ export default function RoomClient({
                 }}
               >
                 <span className="msr" style={{ fontSize: 12 }} aria-hidden>
-                  play_arrow
+                  {playerOpen ? "stop" : "play_arrow"}
                 </span>
               </span>
               <span
@@ -2291,7 +2452,12 @@ export default function RoomClient({
               >
                 🎧 {playlist.title}
               </span>
-            </a>
+              {listeners > 0 && (
+                <span style={{ fontSize: 10.5, color: "var(--muted)", whiteSpace: "nowrap" }}>
+                  {listeners} listening
+                </span>
+              )}
+            </button>
           )}
           {pinned.length > 0 && (
             <button
@@ -2320,6 +2486,20 @@ export default function RoomClient({
               pins · {pinned.length}
             </button>
           )}
+        </div>
+      )}
+
+      {/* Mobile inline player — outside the sheet so it survives closing it */}
+      {narrow && member && playerOpen && playlistEmbed && playlist && (
+        <div style={{ flex: "none", padding: "0 12px 8px", background: "var(--chat-veil-soft)" }}>
+          <iframe
+            src={playlistEmbed}
+            title={`Playlist: ${playlist.title}`}
+            height={175}
+            style={{ width: "100%", border: 0, borderRadius: 12, background: "transparent" }}
+            allow="autoplay *; encrypted-media *; fullscreen *"
+            loading="lazy"
+          />
         </div>
       )}
 
@@ -2679,6 +2859,7 @@ export default function RoomClient({
                 }
                 if (block.type === "moment") {
                   const payload = momentPayload(block.m.content);
+                  const mt = MOMENT_TYPES.find((t) => t.key === payload?.type) ?? MOMENT_TYPES[0];
                   const c = cheers[block.m.id] ?? { count: 0, mine: false };
                   return (
                     <div
@@ -2690,7 +2871,7 @@ export default function RoomClient({
                         alignSelf: "center",
                         width: narrow ? 320 : 380,
                         maxWidth: "100%",
-                        background: "linear-gradient(135deg, #fff7e0, #ffeef6)",
+                        background: mt.grad,
                         borderRadius: narrow ? 16 : 18,
                         padding: "13px 16px",
                         boxShadow: "0 6px 20px rgba(90,63,184,0.14)",
@@ -2704,11 +2885,14 @@ export default function RoomClient({
                       <span aria-hidden style={{ position: "absolute", top: 8, right: 90, width: 4, height: 8, borderRadius: 2, background: "#0d9488", transform: "rotate(-18deg)" }} />
                       <span aria-hidden style={{ position: "absolute", bottom: 20, right: 56, width: 6, height: 6, borderRadius: "50%", background: "#f2c452" }} />
                       <p className="lg-serif" style={{ margin: 0, fontSize: 17, fontWeight: 600, color: "#2b2733" }}>
-                        {payload ? `it's ${payload.name}'s birthday 🎂` : block.m.content}
+                        {payload ? mt.title(payload.name) : block.m.content}
+                      </p>
+                      <p style={{ margin: "2px 0 0", fontSize: 10.5, color: "rgba(43,39,51,0.55)" }}>
+                        from {block.m.user_id === userId ? "you" : block.m.display_name}
                       </p>
                       <button
                         type="button"
-                        onClick={() => cheerMoment(block.m)}
+                        onClick={() => cheerMoment(block.m, mt.confetti)}
                         style={{
                           width: "auto",
                           marginTop: 7,
@@ -2724,7 +2908,8 @@ export default function RoomClient({
                         }}
                       >
                         <span style={{ whiteSpace: "nowrap" }}>
-                          🎉 throw confetti{c.count > 0 ? ` — ${c.count} thrown` : ""}
+                          {mt.cheer}
+                          {c.count > 0 ? ` — ${c.count}` : ""}
                         </span>
                       </button>
                     </div>
@@ -3386,14 +3571,38 @@ export default function RoomClient({
                 className="card"
                 style={{ flex: "none", maxWidth: "none", margin: "8px 0", padding: 14 }}
               >
-                <h3 style={{ fontSize: 14, marginBottom: 8 }}>Celebrate a girl 🎂</h3>
+                <h3 style={{ fontSize: 14, marginBottom: 8 }}>Celebrate & announce ✨</h3>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+                  {MOMENT_TYPES.map((t) => (
+                    <button
+                      key={t.key}
+                      type="button"
+                      onClick={() => setMomentType(t.key)}
+                      aria-pressed={momentType === t.key}
+                      style={{
+                        width: "auto",
+                        padding: "5px 12px",
+                        fontSize: 12.5,
+                        fontWeight: 600,
+                        borderRadius: 999,
+                        background: momentType === t.key ? "var(--accent-tint)" : "var(--bg)",
+                        color: momentType === t.key ? "var(--accent-tint-text)" : "var(--muted)",
+                        border: momentType === t.key ? "1px solid var(--accent)" : "1px solid var(--border)",
+                        cursor: "pointer",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {t.icon} {t.chip}
+                    </button>
+                  ))}
+                </div>
                 <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                   <input
                     autoFocus
-                    placeholder="whose day is it?"
+                    placeholder={MOMENT_TYPES.find((t) => t.key === momentType)?.placeholder}
                     value={celebrateName}
                     onChange={(e) => setCelebrateName(e.target.value)}
-                    maxLength={60}
+                    maxLength={80}
                     style={{ flex: 1, minWidth: 160, marginBottom: 0 }}
                   />
                   <button
@@ -3620,21 +3829,19 @@ export default function RoomClient({
                         </span>
                         Start a poll
                       </button>
-                      {(isCreator || isAdmin) && (
-                        <button
-                          type="button"
-                          style={menuItem}
-                          onClick={() => {
-                            setShowAttach(false);
-                            setShowCelebrate(true);
-                          }}
-                        >
-                          <span className="msr" style={{ fontSize: 17, color: "var(--muted)" }} aria-hidden>
-                            cake
-                          </span>
-                          Celebrate a girl
-                        </button>
-                      )}
+                      <button
+                        type="button"
+                        style={menuItem}
+                        onClick={() => {
+                          setShowAttach(false);
+                          setShowCelebrate(true);
+                        }}
+                      >
+                        <span className="msr" style={{ fontSize: 17, color: "var(--muted)" }} aria-hidden>
+                          celebration
+                        </span>
+                        Celebrate & announce
+                      </button>
                     </div>
                   )}
                   <form
@@ -3787,7 +3994,7 @@ export default function RoomClient({
             <div>
               <PanelLabel color="var(--accent)">on the couch rn</PanelLabel>
               {couch.length > 0 ? (
-                renderCouchGrid(4, 36)
+                renderCouch(4, 36)
               ) : (
                 <p style={{ fontSize: 11.5, color: sub, margin: 0 }}>just you so far 🛋️</p>
               )}
@@ -3869,7 +4076,7 @@ export default function RoomClient({
             </div>
             <PanelLabel color="var(--accent)">on the couch rn · {hereNow}</PanelLabel>
             <div style={{ marginBottom: 16 }}>
-              {couch.length > 0 ? renderCouchGrid(5, 44) : <p style={{ fontSize: 12, color: "var(--muted)", margin: 0 }}>just you so far 🛋️</p>}
+              {couch.length > 0 ? renderCouch(5, 44) : <p style={{ fontSize: 12, color: "var(--muted)", margin: 0 }}>just you so far 🛋️</p>}
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {renderPlaylistCard(false)}
