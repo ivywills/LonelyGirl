@@ -1,36 +1,18 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { isNativeMobile } from "@/lib/runtime";
-import { ImagePicker, ROOM_COLORS, roomSurface, uploadRoomImage, type Room } from "@/app/chat/rooms-client";
+import {
+  ImagePicker,
+  ROOM_COLORS,
+  personTheme,
+  roomSurface,
+  uploadRoomImage,
+  type Room,
+} from "@/app/chat/rooms-client";
 import { ProfileTrigger } from "@/app/profile-card";
-import PageHeader from "@/app/page-header";
-import { useChatMenu } from "@/app/chat/chat-shell";
-
-/** Small pill buttons in the header bar (pop out, rules, settings, leave). */
-const headerBtn: React.CSSProperties = {
-  width: "auto",
-  padding: "5px 12px",
-  fontSize: 12,
-  background: "var(--bg)",
-  color: "var(--text)",
-  border: "1px solid var(--border)",
-};
-
-/** Tiny inline report/delete icons in a bubble's meta row. */
-const msgActionBtn: React.CSSProperties = {
-  background: "transparent",
-  border: "none",
-  padding: 0,
-  marginLeft: 6,
-  width: "auto",
-  color: "inherit",
-  opacity: 0.65,
-  cursor: "pointer",
-  verticalAlign: "middle",
-};
 
 type Msg = {
   id: number;
@@ -38,17 +20,32 @@ type Msg = {
   user_id: string;
   display_name: string;
   content: string;
-  kind: "text" | "gif" | "system" | "image";
+  kind: "text" | "gif" | "system" | "image" | "voice" | "moment";
   pinned: boolean;
   created_at: string;
   reply_to_id: number | null;
   edited_at: string | null;
+  duration_secs: number | null;
 };
 
 type Reaction = { user_id: string; emoji: string };
 
 /** The tapback row — small on purpose, the full picker is for composing. */
 const QUICK_REACTIONS = ["❤️", "👍", "😂", "😮", "😢", "🔥"];
+
+/** The burst rail: taps float up the chat edge for everyone, nothing stored. */
+const BURSTS = ["💜", "😂", "😭", "✨", "💅"];
+
+const CONFETTI_COLORS = ["#f2c452", "#db2777", "#7c5cd6", "#0d9488"];
+
+/** Poll option bar fills + their % label colours, by option index. */
+const POLL_FILLS = [
+  "linear-gradient(90deg, #e4d9fb, #cdbcff)",
+  "#f9dcea",
+  "#d2efe9",
+  "#f6ead0",
+];
+const POLL_INKS = ["#5b3fb8", "#a81d5b", "#0b6f66", "#8a6d1a"];
 
 type JoinRequest = {
   id: string;
@@ -58,6 +55,28 @@ type JoinRequest = {
   note: string;
   status: string;
 };
+
+type Poll = {
+  id: string;
+  room_id: string;
+  creator_id: string;
+  creator_name: string;
+  question: string;
+  options: string[];
+  closes_at: string | null;
+  created_at: string;
+};
+
+type PollVote = { user_id: string; option_idx: number };
+
+type PlaylistTile = {
+  id: string;
+  title: string;
+  apple_url: string;
+  creator_name: string;
+};
+
+type PresenceInfo = { name: string; joinedAt: number; lastMessageAt: number };
 
 const EMOJI_SET: [string, string, string][] = [
   ["😀", "grinning happy", "smileys"],
@@ -212,6 +231,32 @@ function renderMessageContent(content: string): (string | { url: string; name: s
   return parts;
 }
 
+/** A 'moment' message's payload — `{"type":"birthday","name":"Amara"}`. */
+function momentPayload(content: string): { type: string; name: string } | null {
+  try {
+    const p = JSON.parse(content);
+    if (p && typeof p === "object" && typeof p.name === "string") {
+      return { type: typeof p.type === "string" ? p.type : "birthday", name: p.name };
+    }
+  } catch {
+    /* not a moment we understand */
+  }
+  return null;
+}
+
+function excerptOf(m: Msg, own: boolean): string {
+  const who = own ? "You" : m.display_name;
+  const what =
+    m.kind === "image"
+      ? "📷 Photo"
+      : m.kind === "gif"
+        ? "GIF"
+        : m.kind === "voice"
+          ? "🎙️ Voice note"
+          : m.content.replace(CUSTOM_EMOJI_RE, "▪").slice(0, 80);
+  return `${who}: ${what}`;
+}
+
 async function uploadCustomEmoji(
   supabase: ReturnType<typeof createClient>,
   userId: string,
@@ -232,6 +277,314 @@ async function uploadCustomEmoji(
   return supabase.storage.from("custom-emojis").getPublicUrl(path).data.publicUrl;
 }
 
+/** Deterministic waveform for a voice note — same bars for everyone. */
+function voiceBars(seed: number): number[] {
+  const bars: number[] = [];
+  for (let i = 0; i < 10; i++) bars.push(6 + ((seed * 31 + i * 7919) % 15));
+  return bars;
+}
+
+/* --------------------------------------------------------------------------
+ * Small presentational pieces
+ * ------------------------------------------------------------------------ */
+
+function Avatar({ userId, name, size = 34 }: { userId: string; name: string; size?: number }) {
+  const p = personTheme(userId);
+  return (
+    <span
+      aria-hidden
+      style={{
+        width: size,
+        height: size,
+        flex: "none",
+        borderRadius: "50%",
+        background: p.av,
+        color: p.avInk,
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        fontSize: Math.round(size * 0.38),
+        fontWeight: 700,
+      }}
+    >
+      {(name.trim().charAt(0) || "?").toUpperCase()}
+    </span>
+  );
+}
+
+function VoiceBubble({ m }: { m: Msg }) {
+  const p = personTheme(m.user_id);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [playing, setPlaying] = useState(false);
+  const [prog, setProg] = useState(0);
+  const bars = useMemo(() => voiceBars(m.id), [m.id]);
+
+  useEffect(() => {
+    return () => {
+      audioRef.current?.pause();
+    };
+  }, []);
+
+  function toggle() {
+    if (!audioRef.current) {
+      const a = new Audio(m.content);
+      a.ontimeupdate = () => setProg(a.duration ? a.currentTime / a.duration : 0);
+      a.onended = () => {
+        setPlaying(false);
+        setProg(0);
+      };
+      audioRef.current = a;
+    }
+    const a = audioRef.current;
+    if (playing) {
+      a.pause();
+      setPlaying(false);
+    } else {
+      a.play().catch(() => setPlaying(false));
+      setPlaying(true);
+    }
+  }
+
+  const dur = m.duration_secs ?? 0;
+  const durLabel = `${Math.floor(dur / 60)}:${String(dur % 60).padStart(2, "0")}`;
+
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
+      <button
+        type="button"
+        onClick={toggle}
+        aria-label={playing ? "Pause voice note" : "Play voice note"}
+        style={{
+          width: 30,
+          height: 30,
+          flex: "none",
+          padding: 0,
+          borderRadius: "50%",
+          background: p.avInk,
+          color: "#ffffff",
+          border: "none",
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          cursor: "pointer",
+        }}
+      >
+        <span className="msr" style={{ fontSize: 16 }} aria-hidden>
+          {playing ? "pause" : "play_arrow"}
+        </span>
+      </button>
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 2, height: 22 }} aria-hidden>
+        {bars.map((h, i) => (
+          <span
+            key={i}
+            style={{
+              width: 3,
+              height: h,
+              borderRadius: 2,
+              background: (i + 0.5) / bars.length <= prog ? p.avInk : p.soft,
+            }}
+          />
+        ))}
+      </span>
+      <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--muted)" }}>{durLabel}</span>
+    </span>
+  );
+}
+
+function PollCard({
+  poll,
+  votes,
+  userId,
+  narrow,
+  onVote,
+}: {
+  poll: Poll;
+  votes: PollVote[];
+  userId: string;
+  narrow: boolean;
+  onVote: (poll: Poll, idx: number) => void;
+}) {
+  const total = votes.length;
+  const mine = votes.find((v) => v.user_id === userId)?.option_idx ?? null;
+  const closed = poll.closes_at != null && new Date(poll.closes_at).getTime() < Date.now();
+  const closesLabel = poll.closes_at
+    ? closed
+      ? "closed"
+      : `closes ${new Date(poll.closes_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
+    : "open";
+
+  return (
+    <div
+      style={{
+        // Feature card: stays white in both themes, like the design
+        background: "#ffffff",
+        borderRadius: narrow ? 16 : 18,
+        padding: narrow ? "12px 14px 10px" : "13px 16px 11px",
+        width: narrow ? "100%" : 400,
+        maxWidth: "100%",
+        boxShadow: "0 6px 20px rgba(90,63,184,0.12)",
+      }}
+    >
+      <p className="lg-serif" style={{ margin: 0, fontSize: narrow ? 15.5 : 16.5, fontWeight: 600, color: "#2b2733" }}>
+        {poll.question}
+      </p>
+      <p style={{ margin: "1px 0 9px", fontSize: 11.5, color: "#756e82" }}>
+        {poll.creator_name || "someone"} asked · {total} vote{total === 1 ? "" : "s"} · {closesLabel}
+      </p>
+      {poll.options.map((opt, i) => {
+        const count = votes.filter((v) => v.option_idx === i).length;
+        const pct = total ? Math.round((count / total) * 100) : 0;
+        return (
+          <button
+            key={i}
+            type="button"
+            onClick={() => !closed && onVote(poll, i)}
+            aria-label={`Vote ${opt} — ${pct}%${mine === i ? ", your vote" : ""}`}
+            disabled={closed}
+            style={{
+              display: "block",
+              width: "100%",
+              padding: 0,
+              position: "relative",
+              borderRadius: 11,
+              background: "#f4effc",
+              border: mine === i ? `1.5px solid ${POLL_INKS[i % POLL_INKS.length]}` : "1.5px solid transparent",
+              marginBottom: 7,
+              overflow: "hidden",
+              cursor: closed ? "default" : "pointer",
+              textAlign: "left",
+            }}
+          >
+            <span
+              aria-hidden
+              style={{
+                position: "absolute",
+                inset: 0,
+                width: `${pct}%`,
+                background: POLL_FILLS[i % POLL_FILLS.length],
+                borderRadius: 11,
+                transition: "width .35s ease",
+              }}
+            />
+            <span
+              style={{
+                position: "relative",
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "8px 12px",
+                fontSize: 13.5,
+                fontWeight: 600,
+                color: "#2c2635",
+              }}
+            >
+              {opt}
+              <span style={{ marginLeft: "auto", color: POLL_INKS[i % POLL_INKS.length] }}>{pct}%</span>
+            </span>
+          </button>
+        );
+      })}
+      <p style={{ margin: "4px 0 0", fontSize: 11.5, fontWeight: 700, color: "#7c5cd6" }}>
+        {closed
+          ? "poll closed"
+          : mine != null
+            ? `you voted ${poll.options[mine]} · tap to change`
+            : "tap an option to vote"}
+      </p>
+    </div>
+  );
+}
+
+/** One screen-wide confetti volley. Random placement is fine — client only. */
+function ConfettiLayer({ bursts }: { bursts: number[] }) {
+  if (bursts.length === 0) return null;
+  return (
+    <div className="lg-confetti" aria-hidden>
+      {bursts.map((id) =>
+        Array.from({ length: 60 }, (_, i) => {
+          const round = i % 3 === 0;
+          const size = 4 + (i % 5);
+          return (
+            <span
+              key={`${id}-${i}`}
+              style={{
+                left: `${Math.random() * 100}%`,
+                width: size,
+                height: round ? size : size + 4,
+                borderRadius: round ? "50%" : 2,
+                background: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
+                animationDelay: `${Math.random() * 0.25}s`,
+              }}
+            />
+          );
+        })
+      )}
+    </div>
+  );
+}
+
+function Equalizer({ color = "#b39dfb" }: { color?: string }) {
+  return (
+    <span style={{ display: "inline-flex", alignItems: "flex-end", gap: 2, height: 16 }} aria-hidden>
+      {[8, 14, 10].map((h, i) => (
+        <span
+          key={i}
+          className="lg-tbounce"
+          style={{
+            width: 3,
+            height: h,
+            borderRadius: 2,
+            background: color,
+            animation: `tbounce 1s ${i * 0.2}s infinite`,
+          }}
+        />
+      ))}
+    </span>
+  );
+}
+
+function TypingDots() {
+  return (
+    <span style={{ display: "inline-flex", gap: 3, alignItems: "center" }} aria-hidden>
+      {[0, 0.15, 0.3].map((d) => (
+        <span
+          key={d}
+          className="lg-tbounce"
+          style={{
+            width: 5,
+            height: 5,
+            borderRadius: "50%",
+            background: "var(--accent)",
+            animation: `tbounce 1.2s ${d}s infinite`,
+          }}
+        />
+      ))}
+    </span>
+  );
+}
+
+/** Uppercase section label used in the room-life panel and sheet. */
+function PanelLabel({ color, children }: { color: string; children: React.ReactNode }) {
+  return (
+    <p
+      style={{
+        margin: "0 0 8px",
+        fontSize: 10.5,
+        fontWeight: 700,
+        letterSpacing: "0.14em",
+        textTransform: "uppercase",
+        color,
+      }}
+    >
+      {children}
+    </p>
+  );
+}
+
+/* --------------------------------------------------------------------------
+ * The room
+ * ------------------------------------------------------------------------ */
+
 export default function RoomClient({
   room: initialRoom,
   userId,
@@ -250,7 +603,6 @@ export default function RoomClient({
   memberCount?: number;
 }) {
   const router = useRouter();
-  const onMenu = useChatMenu();
   const supabase = createClient();
   const [room, setRoom] = useState(initialRoom);
   const [member, setMember] = useState(initiallyMember);
@@ -273,31 +625,77 @@ export default function RoomClient({
   const [error, setError] = useState("");
   const [hasMore, setHasMore] = useState(initialMessages.length >= 50);
   const [pinnedList, setPinnedList] = useState<Msg[]>([]);
+  const [pinsOpen, setPinsOpen] = useState(false);
   const [blockedIds, setBlockedIds] = useState<Set<string>>(new Set());
   const [isAdmin, setIsAdmin] = useState(false);
   const [notice, setNotice] = useState("");
   const [amBanned, setAmBanned] = useState(false);
   const [reactions, setReactions] = useState<Record<number, Reaction[]>>({});
   const [reactPickerFor, setReactPickerFor] = useState<number | null>(null);
+  const [msgMenuFor, setMsgMenuFor] = useState<number | null>(null);
+  const [tappedFor, setTappedFor] = useState<number | null>(null);
   const [replyTo, setReplyTo] = useState<Msg | null>(null);
   const [editingMsg, setEditingMsg] = useState<Msg | null>(null);
   const [typers, setTypers] = useState<Record<string, { name: string; until: number }>>({});
   const [showJump, setShowJump] = useState(false);
   const [newBelow, setNewBelow] = useState(0);
   const [attachBusy, setAttachBusy] = useState(false);
+  const [headerMenu, setHeaderMenu] = useState(false);
+  const [showAttach, setShowAttach] = useState(false);
+
+  // New room-life state
+  const [presence, setPresence] = useState<Record<string, PresenceInfo>>({});
+  const [couchAll, setCouchAll] = useState(false);
+  const [polls, setPolls] = useState<Poll[]>([]);
+  const [votes, setVotes] = useState<Record<string, PollVote[]>>({});
+  const [cheers, setCheers] = useState<Record<number, { count: number; mine: boolean }>>({});
+  const [bursts, setBursts] = useState<{ id: number; emoji: string; x: number }[]>([]);
+  const [confetti, setConfetti] = useState<number[]>([]);
+  const [playlist, setPlaylist] = useState<PlaylistTile | null>(null);
+  const [myPlaylists, setMyPlaylists] = useState<PlaylistTile[]>([]);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [dividerId, setDividerId] = useState<number | null>(null);
+  const [dividerCount, setDividerCount] = useState(0);
+  const [statusTick, setStatusTick] = useState(0);
+
+  // Poll composer
+  const [showPollForm, setShowPollForm] = useState(false);
+  const [pollQ, setPollQ] = useState("");
+  const [pollOpts, setPollOpts] = useState<string[]>(["", ""]);
+  const [pollCloseMins, setPollCloseMins] = useState(0);
+
+  // Voice recording
+  const [recording, setRecording] = useState(false);
+  const [recSecs, setRecSecs] = useState(0);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const recChunksRef = useRef<Blob[]>([]);
+  const recStartRef = useRef(0);
+  const recCancelledRef = useRef(false);
+  const recTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   // Set in an effect so server and first client render agree (hydration)
   const [onNative, setOnNative] = useState(false);
   useEffect(() => setOnNative(isNativeMobile()), []);
+  const [narrow, setNarrow] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 860px)");
+    const sync = () => setNarrow(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+
   const bottomRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const stickRef = useRef(true);
   const lastSendRef = useRef(0);
   const lastTypingRef = useRef(0);
+  const lastBurstRef = useRef(0);
+  const trackRef = useRef<PresenceInfo>({ name: displayName, joinedAt: 0, lastMessageAt: 0 });
+  const cheersFetchedRef = useRef<Set<number>>(new Set());
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const isCreator = room.creator_id === userId;
-  // Theme-aware room surface: known palette colours resolve to CSS vars with
-  // dark and light display variants; legacy hexes get fixed readable inks
   const surface = roomSurface(room.bg_color);
   const ink = surface.ink;
   const sub = surface.sub;
@@ -315,6 +713,32 @@ export default function RoomClient({
       firstScrollRef.current = false;
     }
   }, [messages.length]);
+
+  // The unread divider: where you left off last visit, frozen at mount so it
+  // doesn't chase you down the page while you catch up.
+  useEffect(() => {
+    const seen = localStorage.getItem(`lg-seen-${room.id}`);
+    if (!seen) return;
+    const unseen = initialMessages.filter(
+      (m) => m.created_at > seen && m.user_id !== userId && m.kind !== "system"
+    );
+    if (unseen.length > 0) {
+      setDividerId(unseen[0].id);
+      setDividerCount(unseen.length);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!messages.length || !stickRef.current) return;
+    localStorage.setItem(`lg-seen-${room.id}`, messages[messages.length - 1].created_at);
+  }, [messages, room.id]);
+
+  // Presence statuses ("chatty", "just in") age out — refresh twice a minute
+  useEffect(() => {
+    const t = setInterval(() => setStatusTick((n) => n + 1), 30000);
+    return () => clearInterval(t);
+  }, []);
 
   useEffect(() => {
     if (!member) return;
@@ -383,6 +807,99 @@ export default function RoomClient({
     const t = setTimeout(() => setNotice(""), 4000);
     return () => clearTimeout(t);
   }, [notice]);
+
+  // Room playlist tile + the creator's picker options
+  useEffect(() => {
+    if (!room.playlist_id) {
+      setPlaylist(null);
+      return;
+    }
+    supabase
+      .from("playlists")
+      .select("id, title, apple_url, creator_name")
+      .eq("id", room.playlist_id)
+      .maybeSingle()
+      .then(({ data }) => setPlaylist(data ?? null));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [room.playlist_id]);
+
+  useEffect(() => {
+    if (!isCreator || !showSettings) return;
+    supabase
+      .from("playlists")
+      .select("id, title, apple_url, creator_name")
+      .order("created_at", { ascending: true })
+      .limit(100)
+      .then(({ data }) => {
+        if (data) setMyPlaylists(data);
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isCreator, showSettings]);
+
+  // Polls + votes for this room
+  useEffect(() => {
+    if (!member) return;
+    supabase
+      .from("polls")
+      .select("*")
+      .eq("room_id", room.id)
+      .order("created_at", { ascending: true })
+      .limit(30)
+      .then(async ({ data }) => {
+        if (!data) return;
+        setPolls(data);
+        if (data.length) {
+          const { data: vs } = await supabase
+            .from("poll_votes")
+            .select("poll_id, user_id, option_idx")
+            .in(
+              "poll_id",
+              data.map((p: Poll) => p.id)
+            );
+          if (vs) {
+            const grouped: Record<string, PollVote[]> = {};
+            for (const v of vs) {
+              (grouped[v.poll_id] = grouped[v.poll_id] ?? []).push({
+                user_id: v.user_id,
+                option_idx: v.option_idx,
+              });
+            }
+            setVotes(grouped);
+          }
+        }
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [member, room.id]);
+
+  // Confetti counts for any moment messages on screen
+  useEffect(() => {
+    if (!member) return;
+    const momentIds = messages
+      .filter((m) => m.kind === "moment" && !cheersFetchedRef.current.has(m.id))
+      .map((m) => m.id);
+    if (!momentIds.length) return;
+    momentIds.forEach((id) => cheersFetchedRef.current.add(id));
+    supabase
+      .from("moment_cheers")
+      .select("moment_id, user_id")
+      .in("moment_id", momentIds)
+      .then(({ data }) => {
+        if (!data) return;
+        setCheers((prev) => {
+          const next = { ...prev };
+          for (const id of momentIds) next[id] = next[id] ?? { count: 0, mine: false };
+          for (const c of data) {
+            const cur = next[c.moment_id] ?? { count: 0, mine: false };
+            next[c.moment_id] = {
+              count: cur.count + 1,
+              mine: cur.mine || c.user_id === userId,
+            };
+          }
+          return next;
+        });
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [member, messages]);
 
   function addReaction(messageId: number, uid: string, emoji: string) {
     setReactions((prev) => {
@@ -464,10 +981,19 @@ export default function RoomClient({
     else setCustomEmojis((prev) => prev.filter((e) => e.id !== em.id));
   }
 
+  function addBurst(emoji: string) {
+    const id = Date.now() + Math.floor(Math.random() * 1000);
+    setBursts((prev) => {
+      if (prev.length >= 12) return prev; // cap concurrent glyphs, drop excess
+      return [...prev, { id, emoji, x: Math.floor(Math.random() * 36) }];
+    });
+    setTimeout(() => setBursts((prev) => prev.filter((b) => b.id !== id)), 4400);
+  }
+
   useEffect(() => {
     if (!member) return;
     const channel = supabase
-      .channel(`room-${room.id}`)
+      .channel(`room-${room.id}`, { config: { presence: { key: userId } } })
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "messages", filter: `room_id=eq.${room.id}` },
@@ -526,6 +1052,66 @@ export default function RoomClient({
         }
       )
       .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "polls", filter: `room_id=eq.${room.id}` },
+        (payload: { new: Poll }) => {
+          setPolls((prev) => (prev.some((p) => p.id === payload.new.id) ? prev : [...prev, payload.new]));
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "poll_votes" },
+        (payload: { new: { poll_id: string; user_id: string; option_idx: number } }) => {
+          const v = payload.new;
+          setVotes((prev) => ({
+            ...prev,
+            [v.poll_id]: [
+              ...(prev[v.poll_id] ?? []).filter((x) => x.user_id !== v.user_id),
+              { user_id: v.user_id, option_idx: v.option_idx },
+            ],
+          }));
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "poll_votes" },
+        (payload: { new: { poll_id: string; user_id: string; option_idx: number } }) => {
+          const v = payload.new;
+          setVotes((prev) => ({
+            ...prev,
+            [v.poll_id]: [
+              ...(prev[v.poll_id] ?? []).filter((x) => x.user_id !== v.user_id),
+              { user_id: v.user_id, option_idx: v.option_idx },
+            ],
+          }));
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "DELETE", schema: "public", table: "poll_votes" },
+        (payload: { old: { poll_id?: string; user_id?: string } }) => {
+          const { poll_id, user_id } = payload.old;
+          if (!poll_id || !user_id) return;
+          setVotes((prev) => ({
+            ...prev,
+            [poll_id]: (prev[poll_id] ?? []).filter((x) => x.user_id !== user_id),
+          }));
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "moment_cheers" },
+        (payload: { new: { moment_id: number; user_id: string } }) => {
+          const c = payload.new;
+          // Own cheer is counted optimistically at tap time
+          if (c.user_id === userId) return;
+          setCheers((prev) => {
+            const cur = prev[c.moment_id] ?? { count: 0, mine: false };
+            return { ...prev, [c.moment_id]: { ...cur, count: cur.count + 1 } };
+          });
+        }
+      )
+      .on(
         "broadcast",
         { event: "typing" },
         ({ payload }: { payload: { uid: string; name: string } }) => {
@@ -536,7 +1122,29 @@ export default function RoomClient({
           }));
         }
       )
-      .subscribe();
+      .on(
+        "broadcast",
+        { event: "burst" },
+        ({ payload }: { payload: { emoji: string; uid: string } }) => {
+          if (payload.uid === userId) return; // own bursts are added at tap time
+          addBurst(payload.emoji);
+        }
+      )
+      .on("presence", { event: "sync" }, () => {
+        const state = channel.presenceState<PresenceInfo>();
+        const next: Record<string, PresenceInfo> = {};
+        for (const [uid, metas] of Object.entries(state)) {
+          const m0 = metas[metas.length - 1];
+          if (m0) next[uid] = { name: m0.name, joinedAt: m0.joinedAt, lastMessageAt: m0.lastMessageAt };
+        }
+        setPresence(next);
+      })
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") {
+          trackRef.current = { name: displayName, joinedAt: Date.now(), lastMessageAt: 0 };
+          channel.track(trackRef.current);
+        }
+      });
     channelRef.current = channel;
     return () => {
       channelRef.current = null;
@@ -683,6 +1291,12 @@ export default function RoomClient({
     });
   }
 
+  function bumpMyPresence() {
+    if (!channelRef.current) return;
+    trackRef.current = { ...trackRef.current, lastMessageAt: Date.now() };
+    channelRef.current.track(trackRef.current);
+  }
+
   async function send(e: React.FormEvent) {
     e.preventDefault();
     const content = input.trim();
@@ -723,7 +1337,10 @@ export default function RoomClient({
       reply_to_id: replyTo?.id ?? null,
     });
     if (err) setError(err.message);
-    else setReplyTo(null);
+    else {
+      setReplyTo(null);
+      bumpMyPresence();
+    }
   }
 
   async function sendImage(file: File) {
@@ -741,6 +1358,7 @@ export default function RoomClient({
       });
       if (err) throw new Error(err.message);
       setReplyTo(null);
+      bumpMyPresence();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed.");
     }
@@ -777,6 +1395,18 @@ export default function RoomClient({
     });
   }
 
+  /** Throttled emoji burst — floats up for everyone, never stored. */
+  function sendBurst(emoji: string) {
+    if (Date.now() - lastBurstRef.current < 1000) return;
+    lastBurstRef.current = Date.now();
+    addBurst(emoji);
+    channelRef.current?.send({
+      type: "broadcast",
+      event: "burst",
+      payload: { emoji, uid: userId },
+    });
+  }
+
   async function deleteMessage(m: Msg) {
     if (!confirm("Delete this message?")) return;
     const { error: err } = await supabase.from("messages").delete().eq("id", m.id);
@@ -804,6 +1434,168 @@ export default function RoomClient({
     else setNotice("Report sent. An admin will take a look.");
   }
 
+  async function togglePin(m: Msg) {
+    const { error: err } = await supabase.from("messages").update({ pinned: !m.pinned }).eq("id", m.id);
+    if (err) setError(err.message);
+  }
+
+  async function votePoll(poll: Poll, idx: number) {
+    const prevVote = (votes[poll.id] ?? []).find((v) => v.user_id === userId);
+    if (prevVote?.option_idx === idx) return;
+    // Optimistic — realtime confirms for everyone else
+    setVotes((prev) => ({
+      ...prev,
+      [poll.id]: [
+        ...(prev[poll.id] ?? []).filter((v) => v.user_id !== userId),
+        { user_id: userId, option_idx: idx },
+      ],
+    }));
+    const { error: err } = await supabase
+      .from("poll_votes")
+      .upsert({ poll_id: poll.id, user_id: userId, option_idx: idx });
+    if (err) setError(err.message);
+  }
+
+  async function createPoll(e: React.FormEvent) {
+    e.preventDefault();
+    const opts = pollOpts.map((t) => t.trim()).filter(Boolean);
+    if (!pollQ.trim() || opts.length < 2) {
+      setError("A poll needs a question and at least two options.");
+      return;
+    }
+    const closes_at = pollCloseMins
+      ? new Date(Date.now() + pollCloseMins * 60000).toISOString()
+      : null;
+    const { data, error: err } = await supabase
+      .from("polls")
+      .insert({
+        room_id: room.id,
+        creator_id: userId,
+        creator_name: displayName,
+        question: pollQ.trim(),
+        options: opts,
+        closes_at,
+      })
+      .select()
+      .single();
+    if (err) {
+      setError(err.message);
+      return;
+    }
+    if (data) setPolls((prev) => (prev.some((p) => p.id === data.id) ? prev : [...prev, data]));
+    setShowPollForm(false);
+    setPollQ("");
+    setPollOpts(["", ""]);
+    setPollCloseMins(0);
+  }
+
+  function fireConfetti() {
+    const id = Date.now();
+    setConfetti((prev) => [...prev, id]);
+    setTimeout(() => setConfetti((prev) => prev.filter((x) => x !== id)), 1500);
+  }
+
+  async function cheerMoment(m: Msg) {
+    fireConfetti();
+    const cur = cheers[m.id] ?? { count: 0, mine: false };
+    if (cur.mine) return; // the shared count is once per person; confetti is free
+    setCheers((prev) => ({ ...prev, [m.id]: { count: cur.count + 1, mine: true } }));
+    const { error: err } = await supabase
+      .from("moment_cheers")
+      .insert({ moment_id: m.id, user_id: userId });
+    if (err && !err.message.includes("duplicate")) setError(err.message);
+  }
+
+  async function celebrate() {
+    const name = window.prompt("Whose day is it? (her name goes on the card)");
+    if (!name?.trim()) return;
+    const { error: err } = await supabase.from("messages").insert({
+      room_id: room.id,
+      user_id: userId,
+      display_name: displayName,
+      content: JSON.stringify({ type: "birthday", name: name.trim().slice(0, 60) }),
+      kind: "moment",
+    });
+    if (err) setError(err.message);
+  }
+
+  function copyInvite() {
+    navigator.clipboard
+      ?.writeText(`${window.location.origin}/chat/${room.id}`)
+      .then(() => setNotice("Invite link copied 💜"))
+      .catch(() => setNotice(window.location.origin + "/chat/" + room.id));
+  }
+
+  /* Voice notes: hold the mic, release to send. */
+  async function startRecording() {
+    if (recording) return;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mime = MediaRecorder.isTypeSupported("audio/webm")
+        ? "audio/webm"
+        : MediaRecorder.isTypeSupported("audio/mp4")
+          ? "audio/mp4"
+          : "";
+      const mr = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+      recChunksRef.current = [];
+      recCancelledRef.current = false;
+      mr.ondataavailable = (ev) => {
+        if (ev.data.size > 0) recChunksRef.current.push(ev.data);
+      };
+      mr.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        if (recTimerRef.current) clearInterval(recTimerRef.current);
+        setRecording(false);
+        setRecSecs(0);
+        const secs = Math.round((Date.now() - recStartRef.current) / 1000);
+        if (recCancelledRef.current || secs < 1) return;
+        const blob = new Blob(recChunksRef.current, { type: mr.mimeType || "audio/webm" });
+        setAttachBusy(true);
+        try {
+          const ext = (mr.mimeType || "audio/webm").includes("mp4") ? "m4a" : "webm";
+          const path = `${userId}/${Date.now()}.${ext}`;
+          const { error: upErr } = await supabase.storage.from("voice-notes").upload(path, blob, {
+            contentType: blob.type,
+            cacheControl: "3600",
+          });
+          if (upErr) throw new Error(upErr.message);
+          const url = supabase.storage.from("voice-notes").getPublicUrl(path).data.publicUrl;
+          const { error: err } = await supabase.from("messages").insert({
+            room_id: room.id,
+            user_id: userId,
+            display_name: displayName,
+            content: url,
+            kind: "voice",
+            duration_secs: Math.min(secs, 60),
+          });
+          if (err) throw new Error(err.message);
+          bumpMyPresence();
+        } catch (err) {
+          setError(err instanceof Error ? err.message : "Voice note failed.");
+        }
+        setAttachBusy(false);
+      };
+      recorderRef.current = mr;
+      recStartRef.current = Date.now();
+      mr.start();
+      setRecording(true);
+      setRecSecs(0);
+      recTimerRef.current = setInterval(() => {
+        const s = Math.round((Date.now() - recStartRef.current) / 1000);
+        setRecSecs(s);
+        if (s >= 60) stopRecording(false); // ~60s max
+      }, 500);
+    } catch {
+      setError("Couldn't reach your microphone.");
+    }
+  }
+
+  function stopRecording(cancel: boolean) {
+    if (!recorderRef.current || recorderRef.current.state === "inactive") return;
+    recCancelledRef.current = cancel;
+    recorderRef.current.stop();
+  }
+
   async function saveSettings(e: React.FormEvent) {
     e.preventDefault();
     const { error: err } = await supabase
@@ -817,114 +1609,830 @@ export default function RoomClient({
         is_private: room.is_private,
         rules: room.rules,
         welcome_message: room.welcome_message,
+        playlist_id: room.playlist_id ?? null,
       })
       .eq("id", room.id);
     if (err) setError(err.message);
     else setShowSettings(false);
   }
 
+  /* ------------------------------------------------------------------------
+   * Derived data for rendering
+   * ---------------------------------------------------------------------- */
+
   const pinned = pinnedList.filter((m) => !blockedIds.has(m.user_id));
   const visibleMessages = messages.filter((m) => !blockedIds.has(m.user_id));
 
-  return (
-    <>
-      <PageHeader
-        title={
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>
-            {room.name}
-            {room.is_private && (
-              <span className="msr" style={{ fontSize: 17, color: "var(--muted)" }} title="Private room" aria-label="Private room">
-                lock
+  // Presence roster + couch statuses. `statusTick` keeps the labels honest.
+  void statusTick;
+  const nowMs = Date.now();
+  const couch = Object.entries(presence).map(([uid, p]) => {
+    const status =
+      p.lastMessageAt && nowMs - p.lastMessageAt < 5 * 60 * 1000
+        ? "chatty"
+        : p.joinedAt && nowMs - p.joinedAt < 2 * 60 * 1000
+          ? "just in"
+          : "🛋️ lurking";
+    return { uid, name: p.name || "?", status };
+  });
+  couch.sort((a, b) => (a.status === "chatty" ? -1 : 1) - (b.status === "chatty" ? -1 : 1));
+  const hereNow = Math.max(couch.length, member ? 1 : 0);
+
+  // Merge messages and polls into one timeline, then group consecutive
+  // same-sender messages (within 5 min) under one avatar.
+  type Block =
+    | { type: "group"; key: string; sender: string; name: string; own: boolean; msgs: Msg[] }
+    | { type: "system"; key: string; m: Msg }
+    | { type: "moment"; key: string; m: Msg }
+    | { type: "poll"; key: string; p: Poll }
+    | { type: "divider"; key: string };
+
+  const timeline: ({ at: string; m: Msg } | { at: string; p: Poll })[] = [
+    ...visibleMessages.map((m) => ({ at: m.created_at, m })),
+    ...polls.map((p) => ({ at: p.created_at, p })),
+  ].sort((a, b) => a.at.localeCompare(b.at));
+
+  const blocks: Block[] = [];
+  for (const item of timeline) {
+    if ("p" in item) {
+      blocks.push({ type: "poll", key: `p-${item.p.id}`, p: item.p });
+      continue;
+    }
+    const m = item.m;
+    if (m.id === dividerId) blocks.push({ type: "divider", key: "divider" });
+    if (m.kind === "system") {
+      blocks.push({ type: "system", key: `m-${m.id}`, m });
+      continue;
+    }
+    if (m.kind === "moment") {
+      blocks.push({ type: "moment", key: `m-${m.id}`, m });
+      continue;
+    }
+    const last = blocks[blocks.length - 1];
+    if (
+      last &&
+      last.type === "group" &&
+      last.sender === m.user_id &&
+      new Date(m.created_at).getTime() -
+        new Date(last.msgs[last.msgs.length - 1].created_at).getTime() <
+        5 * 60 * 1000
+    ) {
+      last.msgs.push(m);
+    } else {
+      blocks.push({
+        type: "group",
+        key: `g-${m.id}`,
+        sender: m.user_id,
+        name: m.display_name,
+        own: m.user_id === userId,
+        msgs: [m],
+      });
+    }
+  }
+
+  const typerNames = Object.values(typers)
+    .filter((t) => t.until > Date.now())
+    .map((t) => t.name);
+  const typingLine =
+    typerNames.length === 0
+      ? ""
+      : typerNames.length === 1
+        ? `${typerNames[0]} is typing`
+        : `${typerNames[0]} + ${typerNames.length - 1} other${typerNames.length > 2 ? "s" : ""} are typing`;
+
+  function scrollToMsg(id: number) {
+    const el = listRef.current;
+    const t = document.getElementById(`msg-${id}`);
+    if (!el || !t) return;
+    // Manual scrollTop math — scrollIntoView fights the height-locked page
+    el.scrollTop += t.getBoundingClientRect().top - el.getBoundingClientRect().top - 60;
+  }
+
+  /* ------------------------------------------------------------------------
+   * Shared bits of UI
+   * ---------------------------------------------------------------------- */
+
+  const pillBtn: React.CSSProperties = {
+    width: "auto",
+    padding: "7px 14px",
+    fontSize: 12.5,
+    fontWeight: 600,
+    background: "var(--chat-veil)",
+    color: acc,
+    border: "none",
+    borderRadius: 999,
+    boxShadow: "0 2px 8px var(--chat-shadow)",
+    cursor: "pointer",
+    whiteSpace: "nowrap",
+  };
+
+  const composerCircle = (size: number): React.CSSProperties => ({
+    width: size,
+    height: size,
+    flex: "none",
+    padding: 0,
+    borderRadius: "50%",
+    background: "transparent",
+    border: "none",
+    color: "var(--accent)",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+  });
+
+  const menuItem: React.CSSProperties = {
+    display: "flex",
+    alignItems: "center",
+    gap: 9,
+    width: "100%",
+    padding: "9px 10px",
+    background: "transparent",
+    border: "none",
+    borderRadius: 8,
+    color: "var(--text)",
+    fontSize: 13.5,
+    textAlign: "left",
+    cursor: "pointer",
+  };
+
+  function renderCouchGrid(cols: number, size: number) {
+    const cells = couchAll ? couch : couch.slice(0, cols * 2 - 1);
+    const extra = couch.length - cells.length;
+    return (
+      <div style={{ display: "grid", gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: cols === 5 ? 10 : 8 }}>
+        {cells.map((c) => (
+          <span key={c.uid} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, minWidth: 0 }}>
+            {c.uid === userId ? (
+              <span
+                style={
+                  c.status === "chatty"
+                    ? { borderRadius: "50%", boxShadow: "0 0 0 2px var(--card), 0 0 0 3.5px #4ade80" }
+                    : undefined
+                }
+              >
+                <Avatar userId={c.uid} name={c.name} size={size} />
               </span>
+            ) : (
+              <ProfileTrigger userId={c.uid}>
+                <span
+                  style={
+                    c.status === "chatty"
+                      ? { display: "inline-flex", borderRadius: "50%", boxShadow: "0 0 0 2px var(--card), 0 0 0 3.5px #4ade80" }
+                      : { display: "inline-flex" }
+                  }
+                >
+                  <Avatar userId={c.uid} name={c.name} size={size} />
+                </span>
+              </ProfileTrigger>
             )}
+            <span
+              style={{
+                fontSize: 9.5,
+                color: sub,
+                maxWidth: "100%",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {c.uid === userId ? "you" : c.status}
+            </span>
           </span>
-        }
-        backHref="/chat"
-        backLabel="all rooms"
-        onMenu={onMenu}
-      >
-        {/* Pop-out is a desktop/web affordance — a popup inside the phone WebView is a dead end */}
-        {!onNative && (
+        ))}
+        {extra > 0 && (
           <button
             type="button"
-            style={headerBtn}
-            onClick={() =>
-              window.open(window.location.pathname, "_blank", "popup=yes,width=980,height=760")
-            }
-            aria-label="Pop out chat"
-            title="Pop out into its own window"
+            onClick={() => setCouchAll(true)}
+            style={{ width: "auto", padding: 0, background: "transparent", border: "none", display: "flex", flexDirection: "column", alignItems: "center", gap: 2, cursor: "pointer" }}
           >
-            <span className="msr" style={{ fontSize: 16 }} aria-hidden>
-              open_in_new
+            <span
+              style={{
+                width: size,
+                height: size,
+                borderRadius: "50%",
+                background: "var(--card)",
+                border: "1.5px dashed rgba(124,92,214,0.4)",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: 10.5,
+                fontWeight: 700,
+                color: "var(--accent)",
+              }}
+            >
+              +{extra}
             </span>
+            <span style={{ fontSize: 9.5, color: sub }}>see all</span>
           </button>
         )}
-        {room.rules && (
-          <button type="button" style={headerBtn} onClick={() => setShowRules((v) => !v)}>
-            Rules
-          </button>
-        )}
-        {isCreator && (
-          <button type="button" style={headerBtn} onClick={() => setShowSettings((v) => !v)}>
-            Settings{requests.length > 0 ? ` (${requests.length})` : ""}
-          </button>
-        )}
-        {member && !isCreator && (
-          <button type="button" style={headerBtn} onClick={leave} title="Leave this room">
-            Leave
-          </button>
-        )}
-      </PageHeader>
-      <main
-        className="lg-under-topbar lg-chat-lock"
-        style={{
-          background: surface.bg,
-          display: "flex",
-          flexDirection: "column",
-          flex: 1,
-          minWidth: 0,
-          padding: "18px 16px 16px",
-          transition: "background .3s",
-          color: ink,
-        }}
-      >
+      </div>
+    );
+  }
+
+  function renderPlaylistCard(compact: boolean) {
+    if (!playlist) return null;
+    return (
       <div
         style={{
-          display: "flex",
-          flexDirection: "column",
-          flex: 1,
-          minWidth: 0,
-          minHeight: 0,
-          maxWidth: 760,
-          margin: "0 auto",
-          width: "100%",
-          position: "relative",
+          background: "var(--card)",
+          borderRadius: compact ? 14 : 16,
+          padding: compact ? "12px 13px" : "13px 14px",
+          boxShadow: "0 4px 14px var(--chat-shadow)",
         }}
       >
-      <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
-        {room.description && <span style={{ fontSize: 13, color: sub }}>{room.description}</span>}
-        <span style={{ fontSize: 12, color: sub, whiteSpace: "nowrap" }}>
-          <span className="msr" style={{ fontSize: 13, marginRight: 3 }} aria-hidden>
-            group
-          </span>
-          {memberCount} {memberCount === 1 ? "member" : "members"}
-        </span>
-      </div>
-
-      {room.tags?.length > 0 && (
-        <p style={{ fontSize: 12, color: acc, margin: "6px 0 0" }}>
-          {room.tags.map((t) => `#${t}`).join(" ")}
+        <PanelLabel color="#b0387a">room playlist 🎧</PanelLabel>
+        <p style={{ margin: 0, fontSize: compact ? 13 : 14, fontWeight: 700, color: "var(--text)", lineHeight: 1.3 }}>
+          {playlist.title}
         </p>
-      )}
+        <p style={{ margin: "3px 0 0", fontSize: 11.5, color: "var(--muted)" }}>
+          {playlist.creator_name ? `${playlist.creator_name}'s pick` : "the room's pick"}
+        </p>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 9 }}>
+          <a
+            href={playlist.apple_url || "/playlists"}
+            target={playlist.apple_url ? "_blank" : undefined}
+            rel="noreferrer"
+            aria-label="Open the room playlist"
+            style={{
+              width: compact ? 28 : 34,
+              height: compact ? 28 : 34,
+              flex: "none",
+              borderRadius: "50%",
+              background: "#2c2635",
+              color: "#ffffff",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <span className="msr" style={{ fontSize: compact ? 15 : 18 }} aria-hidden>
+              play_arrow
+            </span>
+          </a>
+          <Equalizer />
+          <span style={{ fontSize: 11, color: "var(--muted)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            tap play to listen along
+          </span>
+        </div>
+      </div>
+    );
+  }
 
-      {showRules && room.rules && (
-        <div className="card" style={{ maxWidth: "none", margin: "12px 0", padding: 16 }}>
-          <p style={{ fontSize: 13, whiteSpace: "pre-wrap" }}>{room.rules}</p>
+  function renderWaitingCard() {
+    if (!isCreator || requests.length === 0) return null;
+    return (
+      <div
+        style={{
+          background: "var(--card)",
+          borderRadius: 14,
+          padding: "12px 13px",
+          boxShadow: "0 4px 14px var(--chat-shadow)",
+        }}
+      >
+        <PanelLabel color="#0b6f66">waiting room · {requests.length}</PanelLabel>
+        {requests.map((r) => (
+          <div key={r.id} style={{ marginBottom: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+              <Avatar userId={r.user_id} name={r.display_name} size={26} />
+              <span
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  fontSize: 12,
+                  color: "var(--text)",
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              >
+                {r.display_name}
+                {r.note ? ` — “${r.note}”` : ""}
+              </span>
+            </div>
+            <div style={{ display: "flex", gap: 6 }}>
+              <button
+                type="button"
+                onClick={() => decide(r, true)}
+                style={{
+                  flex: 1,
+                  width: "auto",
+                  padding: "5px 0",
+                  borderRadius: 999,
+                  background: "var(--accent)",
+                  color: "#ffffff",
+                  border: "none",
+                  fontSize: 11.5,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                let her in
+              </button>
+              <button
+                type="button"
+                onClick={() => decide(r, false)}
+                style={{
+                  flex: 1,
+                  width: "auto",
+                  padding: "5px 0",
+                  borderRadius: 999,
+                  background: "var(--bubble-soft)",
+                  color: "var(--muted)",
+                  border: "none",
+                  fontSize: 11.5,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                not now
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  /* ------------------------------------------------------------------------
+   * Render
+   * ---------------------------------------------------------------------- */
+
+  const header = (
+    <header
+      style={{
+        flex: "none",
+        display: "flex",
+        alignItems: "center",
+        gap: narrow ? 8 : 14,
+        padding: narrow
+          ? `calc(8px + var(--safe-top)) 10px 8px`
+          : `calc(12px + var(--safe-top)) 22px 12px`,
+        background: "var(--chat-veil)",
+        borderBottom: "1px solid var(--chat-hairline)",
+        zIndex: 7,
+      }}
+    >
+      {narrow && (
+        <button
+          type="button"
+          onClick={() => router.push("/chat")}
+          aria-label="All rooms"
+          style={{ ...composerCircle(44) }}
+        >
+          <span className="msr" style={{ fontSize: 22 }} aria-hidden>
+            arrow_back
+          </span>
+        </button>
+      )}
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 8, minWidth: 0 }}>
+          <h1
+            className="lg-serif"
+            style={{
+              margin: 0,
+              fontSize: narrow ? 20 : 23,
+              fontWeight: 700,
+              lineHeight: 1.1,
+              color: ink,
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
+            {room.name}
+          </h1>
+          {room.is_private && (
+            <span className="msr" style={{ fontSize: 15, color: sub }} title="Private room" aria-label="Private room">
+              lock
+            </span>
+          )}
+          {!narrow && room.tags?.length > 0 && (
+            <span style={{ fontSize: 12, color: sub, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {room.tags.map((t) => `#${t}`).join(" ")}
+            </span>
+          )}
+        </div>
+        <p style={{ margin: "2px 0 0", fontSize: narrow ? 11.5 : 12, color: acc }}>
+          <span
+            className="lg-pulse-dot"
+            style={{
+              width: 7,
+              height: 7,
+              borderRadius: "50%",
+              background: "var(--success)",
+              display: "inline-block",
+              marginRight: 5,
+              animation: "lgPulse 2.4s ease-in-out infinite",
+            }}
+            aria-hidden
+          />
+          {member ? `${hereNow} here now · ` : ""}
+          {memberCount} member{memberCount === 1 ? "" : "s"}
+        </p>
+      </div>
+      {narrow ? (
+        <>
+          {member && (
+            <button
+              type="button"
+              onClick={() => setSheetOpen(true)}
+              aria-label="Who's here"
+              style={{ width: "auto", padding: 0, background: "transparent", border: "none", display: "inline-flex", cursor: "pointer" }}
+            >
+              {couch.slice(0, 2).map((c, i) => (
+                <span key={c.uid} style={{ marginLeft: i === 0 ? 0 : -8, display: "inline-flex", borderRadius: "50%", border: "2px solid var(--card)" }}>
+                  <Avatar userId={c.uid} name={c.name} size={26} />
+                </span>
+              ))}
+              {couch.length > 2 && (
+                <span
+                  style={{
+                    width: 26,
+                    height: 26,
+                    marginLeft: -8,
+                    borderRadius: "50%",
+                    background: "var(--card)",
+                    border: "2px solid var(--border)",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: 9,
+                    fontWeight: 700,
+                    color: "var(--accent)",
+                  }}
+                >
+                  +{couch.length - 2}
+                </span>
+              )}
+            </button>
+          )}
+          {member && (
+            <button
+              type="button"
+              onClick={() => setSheetOpen(true)}
+              aria-label="Room life"
+              style={composerCircle(44)}
+            >
+              <span className="msr" style={{ fontSize: 22 }} aria-hidden>
+                more_horiz
+              </span>
+            </button>
+          )}
+        </>
+      ) : (
+        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10, position: "relative" }}>
+          {room.rules && (
+            <button type="button" style={pillBtn} onClick={() => setShowRules((v) => !v)}>
+              ✦ room rules
+            </button>
+          )}
+          {member && (
+            <button
+              type="button"
+              onClick={copyInvite}
+              style={{
+                width: "auto",
+                padding: "7px 16px",
+                fontSize: 12.5,
+                fontWeight: 700,
+                background: "var(--accent)",
+                color: "#ffffff",
+                border: "none",
+                borderRadius: 999,
+                boxShadow: "0 4px 12px rgba(124,92,214,0.35)",
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+              }}
+            >
+              invite a girl
+            </button>
+          )}
+          {member && (
+            <button
+              type="button"
+              onClick={() => setHeaderMenu((v) => !v)}
+              aria-expanded={headerMenu}
+              aria-label="Room actions"
+              style={{ ...pillBtn, padding: "7px 9px", display: "inline-flex" }}
+            >
+              <span className="msr" style={{ fontSize: 18 }} aria-hidden>
+                more_horiz
+              </span>
+            </button>
+          )}
+          {headerMenu && (
+            <div
+              style={{
+                position: "absolute",
+                top: 40,
+                right: 0,
+                zIndex: 40,
+                display: "flex",
+                flexDirection: "column",
+                minWidth: 190,
+                padding: 6,
+                background: "var(--card)",
+                border: "1px solid var(--border)",
+                borderRadius: 12,
+                boxShadow: "0 14px 34px var(--lift)",
+              }}
+            >
+              {!onNative && (
+                <button
+                  type="button"
+                  style={menuItem}
+                  onClick={() => {
+                    setHeaderMenu(false);
+                    window.open(window.location.pathname, "_blank", "popup=yes,width=980,height=760");
+                  }}
+                >
+                  <span className="msr" style={{ fontSize: 17, color: "var(--muted)" }} aria-hidden>
+                    open_in_new
+                  </span>
+                  Pop out
+                </button>
+              )}
+              {(isCreator || isAdmin) && (
+                <button
+                  type="button"
+                  style={menuItem}
+                  onClick={() => {
+                    setHeaderMenu(false);
+                    celebrate();
+                  }}
+                >
+                  <span className="msr" style={{ fontSize: 17, color: "var(--muted)" }} aria-hidden>
+                    cake
+                  </span>
+                  Celebrate a girl
+                </button>
+              )}
+              {isCreator && (
+                <button
+                  type="button"
+                  style={menuItem}
+                  onClick={() => {
+                    setHeaderMenu(false);
+                    setShowSettings((v) => !v);
+                  }}
+                >
+                  <span className="msr" style={{ fontSize: 17, color: "var(--muted)" }} aria-hidden>
+                    settings
+                  </span>
+                  Settings{requests.length > 0 ? ` (${requests.length})` : ""}
+                </button>
+              )}
+              {member && !isCreator && (
+                <button
+                  type="button"
+                  style={menuItem}
+                  onClick={() => {
+                    setHeaderMenu(false);
+                    leave();
+                  }}
+                >
+                  <span className="msr" style={{ fontSize: 17, color: "var(--muted)" }} aria-hidden>
+                    logout
+                  </span>
+                  Leave the room
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </header>
+  );
+
+  return (
+    <main
+      className="lg-room-lock"
+      style={{
+        background: surface.grad,
+        display: "flex",
+        flexDirection: "column",
+        color: ink,
+        transition: "background .3s",
+      }}
+    >
+      {header}
+
+      {/* Mobile chips: now playing + pins */}
+      {narrow && member && (playlist || pinned.length > 0) && (
+        <div
+          style={{
+            flex: "none",
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "6px 12px 8px",
+            background: "var(--chat-veil-soft)",
+          }}
+        >
+          {playlist && (
+            <a
+              href={playlist.apple_url || "/playlists"}
+              target={playlist.apple_url ? "_blank" : undefined}
+              rel="noreferrer"
+              style={{
+                flex: 1,
+                minWidth: 0,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                background: "var(--card)",
+                borderRadius: 999,
+                padding: "6px 12px",
+                boxShadow: "0 2px 8px var(--chat-shadow)",
+                textDecoration: "none",
+              }}
+            >
+              <span
+                style={{
+                  width: 20,
+                  height: 20,
+                  flex: "none",
+                  borderRadius: "50%",
+                  background: "#2c2635",
+                  color: "#fff",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <span className="msr" style={{ fontSize: 12 }} aria-hidden>
+                  play_arrow
+                </span>
+              </span>
+              <span
+                style={{
+                  fontSize: 11.5,
+                  fontWeight: 600,
+                  color: "var(--text)",
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              >
+                🎧 {playlist.title}
+              </span>
+            </a>
+          )}
+          {pinned.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setPinsOpen((v) => !v)}
+              style={{
+                flex: "none",
+                width: "auto",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 5,
+                background: "var(--card)",
+                border: "none",
+                borderRadius: 999,
+                padding: "6px 12px",
+                boxShadow: "0 2px 8px var(--chat-shadow)",
+                fontSize: 11.5,
+                fontWeight: 700,
+                color: acc,
+                cursor: "pointer",
+              }}
+            >
+              <span className="msr" style={{ fontSize: 14 }} aria-hidden>
+                push_pin
+              </span>
+              pins · {pinned.length}
+            </button>
+          )}
         </div>
       )}
 
-      {error && <p className="msg-error" style={{ marginTop: 10 }}>{error}</p>}
-      {notice && <p style={{ marginTop: 10, fontSize: 13, color: acc }}>{notice}</p>}
+      {/* Pinned strip (desktop) / expanded pin list (both) */}
+      {member && pinned.length > 0 && !narrow && !pinsOpen && (
+        <div
+          style={{
+            flex: "none",
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "7px 22px",
+            background: "var(--chat-veil-soft)",
+          }}
+        >
+          <span className="msr" style={{ fontSize: 14, color: acc }} aria-hidden>
+            push_pin
+          </span>
+          <span
+            style={{
+              fontSize: 12.5,
+              color: acc,
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              minWidth: 0,
+            }}
+          >
+            <strong>pinned:</strong>{" "}
+            {pinned.map((m) => m.content.replace(CUSTOM_EMOJI_RE, "▪")).join(" · ")}
+          </span>
+          <button
+            type="button"
+            onClick={() => setPinsOpen(true)}
+            style={{
+              marginLeft: "auto",
+              width: "auto",
+              padding: 0,
+              background: "transparent",
+              border: "none",
+              fontSize: 11.5,
+              fontWeight: 600,
+              color: sub,
+              whiteSpace: "nowrap",
+              cursor: "pointer",
+            }}
+          >
+            see all ›
+          </button>
+        </div>
+      )}
+      {member && pinsOpen && pinned.length > 0 && (
+        <div
+          style={{
+            flex: "none",
+            margin: narrow ? "8px 12px 0" : "8px 22px 0",
+            padding: "8px 12px",
+            borderRadius: 10,
+            background: "var(--chat-veil)",
+          }}
+        >
+          {pinned.map((m) => (
+            <p key={m.id} style={{ fontSize: 13, margin: "3px 0", color: acc }}>
+              <span className="msr" style={{ fontSize: 14, marginRight: 4 }} aria-hidden>
+                push_pin
+              </span>
+              <strong>{m.display_name}:</strong> {m.content.replace(CUSTOM_EMOJI_RE, "▪")}
+            </p>
+          ))}
+          <button
+            type="button"
+            onClick={() => setPinsOpen(false)}
+            style={{
+              width: "auto",
+              padding: 0,
+              background: "transparent",
+              border: "none",
+              fontSize: 11.5,
+              fontWeight: 600,
+              color: sub,
+              cursor: "pointer",
+            }}
+          >
+            hide pins
+          </button>
+        </div>
+      )}
+
+      {showRules && room.rules && (
+        <div
+          style={{
+            flex: "none",
+            margin: narrow ? "8px 12px 0" : "8px 22px 0",
+            padding: "10px 14px",
+            borderRadius: 12,
+            background: "var(--card)",
+            boxShadow: "0 2px 8px var(--chat-shadow)",
+          }}
+        >
+          <p style={{ fontSize: 13, whiteSpace: "pre-wrap", color: "var(--text)" }}>{room.rules}</p>
+        </div>
+      )}
+
+      {error && (
+        <p className="msg-error" style={{ flex: "none", margin: narrow ? "8px 12px 0" : "8px 22px 0" }}>
+          {error}
+        </p>
+      )}
+      {notice && (
+        <p style={{ flex: "none", margin: narrow ? "8px 12px 0" : "8px 22px 0", fontSize: 13, color: acc }}>
+          {notice}
+        </p>
+      )}
+      {welcomeBanner && (
+        <div
+          style={{
+            flex: "none",
+            margin: narrow ? "8px 12px 0" : "8px 22px 0",
+            padding: "10px 14px",
+            borderRadius: 12,
+            background: "var(--card)",
+            border: "1px solid var(--accent)",
+          }}
+        >
+          <p style={{ fontSize: 14, color: "var(--text)" }}>{welcomeBanner}</p>
+        </div>
+      )}
 
       {isCreator && showSettings && (
         <form
@@ -932,7 +2440,13 @@ export default function RoomClient({
           className="card"
           // The page is height-locked for the sticky composer, so the long
           // settings form scrolls inside itself
-          style={{ maxWidth: "none", margin: "12px 0", maxHeight: "58vh", overflowY: "auto" }}
+          style={{
+            flex: "none",
+            maxWidth: "none",
+            margin: narrow ? "8px 12px 0" : "8px 22px 0",
+            maxHeight: "58vh",
+            overflowY: "auto",
+          }}
         >
           <h2 style={{ fontSize: 16, marginBottom: 10 }}>Room settings</h2>
           <label>Name</label>
@@ -992,6 +2506,29 @@ export default function RoomClient({
               />
             ))}
           </div>
+          <label>Room playlist (shows in the room-life panel)</label>
+          <select
+            value={room.playlist_id ?? ""}
+            onChange={(e) => setRoom({ ...room, playlist_id: e.target.value || null })}
+            style={{
+              width: "100%",
+              padding: "10px 12px",
+              borderRadius: 8,
+              border: "1px solid var(--border)",
+              background: "var(--bg)",
+              color: "var(--text)",
+              fontSize: 15,
+              marginBottom: 16,
+              fontFamily: "inherit",
+            }}
+          >
+            <option value="">No playlist</option>
+            {myPlaylists.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.title}
+              </option>
+            ))}
+          </select>
           <label>Welcome message</label>
           <input
             value={room.welcome_message}
@@ -1009,36 +2546,6 @@ export default function RoomClient({
             />
             Private room
           </label>
-          {requests.length > 0 && (
-            <>
-              <h3 style={{ fontSize: 14, margin: "6px 0 8px" }}>Waiting room</h3>
-              {requests.map((r) => (
-                <div
-                  key={r.id}
-                  style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8, fontSize: 13 }}
-                >
-                  <span style={{ flex: 1 }}>
-                    <strong>{r.display_name}</strong>
-                    {r.note ? ` — “${r.note}”` : ""}
-                  </span>
-                  <button
-                    type="button"
-                    style={{ width: "auto", padding: "4px 12px", fontSize: 12 }}
-                    onClick={() => decide(r, true)}
-                  >
-                    Let in
-                  </button>
-                  <button
-                    type="button"
-                    style={{ width: "auto", padding: "4px 12px", fontSize: 12 }}
-                    onClick={() => decide(r, false)}
-                  >
-                    Deny
-                  </button>
-                </div>
-              ))}
-            </>
-          )}
           <button className="primary" type="submit">
             Save settings
           </button>
@@ -1076,659 +2583,1259 @@ export default function RoomClient({
           )}
         </div>
       ) : (
-        <>
-          {welcomeBanner && (
-            <div
-              className="card"
-              style={{ maxWidth: "none", margin: "12px 0", padding: "10px 14px", borderColor: "var(--accent)" }}
-            >
-              <p style={{ fontSize: 14 }}>{welcomeBanner}</p>
-            </div>
-          )}
-          {pinned.length > 0 && (
-            <div
-              style={{
-                margin: "12px 0 0",
-                padding: "8px 12px",
-                border: "1px solid var(--border)",
-                borderRadius: 10,
-                background: surface.strip,
-              }}
-            >
-              {pinned.map((m) => (
-                <p key={m.id} style={{ fontSize: 13, margin: "3px 0", color: acc }}>
-                  <span className="msr" style={{ fontSize: 14, marginRight: 4 }} aria-hidden>
-                    push_pin
-                  </span>
-                  <strong>{m.display_name}:</strong> {m.content}
-                </p>
-              ))}
-            </div>
-          )}
+        <div style={{ flex: 1, minHeight: 0, display: "flex" }}>
+          {/* Chat column */}
           <div
-            ref={listRef}
-            onScroll={() => {
-              const el = listRef.current;
-              if (!el) return;
-              const near = el.scrollHeight - el.scrollTop - el.clientHeight < 160;
-              stickRef.current = near;
-              setShowJump(!near);
-              if (near) setNewBelow(0);
-            }}
             style={{
               flex: 1,
-              overflowY: "auto",
-              margin: "12px 0",
+              minWidth: 0,
               display: "flex",
               flexDirection: "column",
-              gap: 8,
-              minHeight: 0,
+              position: "relative",
+              padding: narrow ? "0 12px" : "0 24px",
             }}
           >
-            {hasMore && (
-              <button
-                onClick={loadEarlier}
-                style={{ width: "auto", alignSelf: "center", padding: "4px 16px", fontSize: 12 }}
-              >
-                Load earlier messages
-              </button>
-            )}
-            {visibleMessages.map((m) =>
-              m.kind === "system" ? (
-                <p key={m.id} style={{ textAlign: "center", fontSize: 12, color: sub }}>
-                  {m.content}
-                </p>
-              ) : (
-                <div
-                  key={m.id}
+            <div
+              ref={listRef}
+              onScroll={() => {
+                const el = listRef.current;
+                if (!el) return;
+                const near = el.scrollHeight - el.scrollTop - el.clientHeight < 160;
+                stickRef.current = near;
+                setShowJump(!near);
+                if (near) setNewBelow(0);
+              }}
+              style={{
+                flex: 1,
+                overflowY: "auto",
+                margin: "10px 0 0",
+                padding: "4px 0 10px",
+                display: "flex",
+                flexDirection: "column",
+                gap: narrow ? 10 : 11,
+                minHeight: 0,
+              }}
+            >
+              {hasMore && (
+                <button
+                  onClick={loadEarlier}
                   style={{
-                    alignSelf: m.user_id === userId ? "flex-end" : "flex-start",
-                    maxWidth: "78%",
-                    // Own bubble stays fixed lavender in both themes — dark text on it
-                    // always passes contrast, and it reads on any room colour
-                    background: m.user_id === userId ? "#a78bfa" : "var(--card)",
-                    color: m.user_id === userId ? "#131316" : "var(--text)",
-                    border: "1px solid var(--border)",
-                    borderRadius: 12,
-                    padding: "8px 12px",
-                    position: "relative",
+                    width: "auto",
+                    alignSelf: "center",
+                    padding: "4px 16px",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    borderRadius: 999,
+                    border: "none",
+                    background: "var(--chat-veil)",
+                    color: sub,
+                    cursor: "pointer",
                   }}
                 >
-                  <p style={{ fontSize: 11, opacity: 0.75, marginBottom: 2 }}>
-                    {/* Own messages aren't tappable — you don't need a sheet about yourself. */}
-                    {m.user_id === userId ? (
-                      "You"
-                    ) : (
-                      <ProfileTrigger userId={m.user_id} style={{ textDecoration: "underline", textUnderlineOffset: 2 }}>
-                        {m.display_name}
-                      </ProfileTrigger>
-                    )}
-                    <span style={{ marginLeft: 8, fontSize: 10, opacity: 0.8 }}>{msgTime(m.created_at)}</span>
-                    {m.edited_at && (
-                      <span style={{ marginLeft: 5, fontSize: 10, opacity: 0.7 }}>(edited)</span>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => setReactPickerFor(reactPickerFor === m.id ? null : m.id)}
-                      aria-label="React to this message"
-                      title="React"
-                      style={msgActionBtn}
-                    >
-                      <span className="msr" style={{ fontSize: 13 }} aria-hidden>
-                        add_reaction
-                      </span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setReplyTo(m);
-                        setEditingMsg(null);
-                        inputRef.current?.focus();
+                  Load earlier messages
+                </button>
+              )}
+              {blocks.map((block) => {
+                if (block.type === "divider") {
+                  return (
+                    <div
+                      key={block.key}
+                      style={{
+                        flex: "none",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
+                        color: "#b0387a",
+                        fontSize: 11.5,
+                        fontWeight: 700,
                       }}
-                      aria-label="Reply to this message"
-                      title="Reply"
-                      style={msgActionBtn}
                     >
-                      <span className="msr" style={{ fontSize: 13 }} aria-hidden>
-                        reply
-                      </span>
-                    </button>
-                    {m.user_id === userId && m.kind === "text" && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setEditingMsg(m);
-                          setReplyTo(null);
-                          setInput(m.content);
-                          inputRef.current?.focus();
-                        }}
-                        aria-label="Edit this message"
-                        title="Edit"
-                        style={msgActionBtn}
-                      >
-                        <span className="msr" style={{ fontSize: 13 }} aria-hidden>
-                          edit
-                        </span>
-                      </button>
-                    )}
-                    {m.user_id !== userId && (
-                      <button
-                        type="button"
-                        onClick={() => reportMessage(m)}
-                        aria-label="Report this message"
-                        title="Report"
-                        style={msgActionBtn}
-                      >
-                        <span className="msr" style={{ fontSize: 13 }} aria-hidden>
-                          flag
-                        </span>
-                      </button>
-                    )}
-                    {(m.user_id === userId || isAdmin) && (
-                      <button
-                        type="button"
-                        onClick={() => deleteMessage(m)}
-                        aria-label="Delete this message"
-                        title="Delete"
-                        style={msgActionBtn}
-                      >
-                        <span className="msr" style={{ fontSize: 13 }} aria-hidden>
-                          delete
-                        </span>
-                      </button>
-                    )}
-                  </p>
-                  {m.reply_to_id != null &&
-                    (() => {
-                      const orig = messages.find((x) => x.id === m.reply_to_id);
-                      const excerpt = !orig
-                        ? "Earlier message"
-                        : orig.kind === "image"
-                          ? "📷 Photo"
-                          : orig.kind === "gif"
-                            ? "GIF"
-                            : orig.content.replace(CUSTOM_EMOJI_RE, "▪").slice(0, 80);
-                      return (
-                        <p
-                          style={{
-                            fontSize: 12,
-                            opacity: 0.7,
-                            borderLeft: "2px solid currentColor",
-                            padding: "1px 0 1px 8px",
-                            margin: "0 0 5px",
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          {orig
-                            ? `${orig.user_id === userId ? "You" : orig.display_name}: ${excerpt}`
-                            : excerpt}
-                        </p>
-                      );
-                    })()}
-                  {m.kind === "gif" || m.kind === "image" ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={m.content}
-                      alt={m.kind === "image" ? "photo" : "gif"}
-                      style={{ maxWidth: "100%", borderRadius: 8, display: "block" }}
-                    />
-                  ) : (
-                    <p style={{ fontSize: 14, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
-                      {renderMessageContent(m.content).map((part, i) =>
-                        typeof part === "string" ? (
-                          <span key={i}>{part}</span>
-                        ) : (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            key={i}
-                            src={part.url}
-                            alt={part.name}
-                            title={part.name}
-                            style={{
-                              width: 20,
-                              height: 20,
-                              objectFit: "cover",
-                              borderRadius: 4,
-                              verticalAlign: "middle",
-                              margin: "0 1px",
-                            }}
-                          />
-                        )
-                      )}
+                      <span style={{ flex: 1, borderTop: "1.5px solid #f3c4dd" }} aria-hidden />
+                      {dividerCount} new while you were away ✨
+                      <span style={{ flex: 1, borderTop: "1.5px solid #f3c4dd" }} aria-hidden />
+                    </div>
+                  );
+                }
+                if (block.type === "system") {
+                  return (
+                    <p key={block.key} style={{ textAlign: "center", fontSize: 12, color: sub, margin: 0 }}>
+                      {block.m.content}
                     </p>
-                  )}
-                  {(reactions[m.id]?.length ?? 0) > 0 && (
-                    <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 6 }}>
-                      {Object.entries(
-                        (reactions[m.id] ?? []).reduce(
-                          (acc, r) => {
-                            acc[r.emoji] = acc[r.emoji] ?? { count: 0, mine: false };
-                            acc[r.emoji].count += 1;
-                            if (r.user_id === userId) acc[r.emoji].mine = true;
-                            return acc;
-                          },
-                          {} as Record<string, { count: number; mine: boolean }>
-                        )
-                      ).map(([emoji, g]) => (
-                        <button
-                          key={emoji}
-                          type="button"
-                          onClick={() => toggleReaction(m, emoji)}
-                          aria-label={`${g.count} ${emoji} reaction${g.count === 1 ? "" : "s"}${g.mine ? ", including yours" : ""}`}
-                          style={{
-                            width: "auto",
-                            padding: "1px 8px",
-                            fontSize: 12,
-                            lineHeight: 1.6,
-                            borderRadius: 999,
-                            background: "transparent",
-                            color: "inherit",
-                            border: `1px solid ${g.mine ? "currentColor" : "var(--border)"}`,
-                          }}
-                        >
-                          {emoji} {g.count}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  {reactPickerFor === m.id && (
-                    <div style={{ display: "flex", gap: 2, marginTop: 6 }}>
-                      {QUICK_REACTIONS.map((em) => (
-                        <button
-                          key={em}
-                          type="button"
-                          onClick={() => toggleReaction(m, em)}
-                          aria-label={`React with ${em}`}
-                          style={{
-                            width: "auto",
-                            padding: "0 3px",
-                            fontSize: 18,
-                            background: "transparent",
-                            border: "none",
-                          }}
-                        >
-                          {em}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )
-            )}
-            <div ref={bottomRef} />
-          </div>
-          {(showJump || newBelow > 0) && (
-            <button
-              type="button"
-              onClick={() => {
-                bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-                setNewBelow(0);
-              }}
-              aria-label="Jump to latest messages"
-              style={{
-                position: "absolute",
-                right: 10,
-                bottom: 96,
-                width: "auto",
-                padding: newBelow > 0 ? "6px 14px" : "6px 9px",
-                borderRadius: 999,
-                background: "var(--card)",
-                border: "1px solid var(--border)",
-                color: "var(--text)",
-                boxShadow: "0 3px 12px rgba(0,0,0,.28)",
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-                fontSize: 12,
-                zIndex: 5,
-              }}
-            >
-              <span className="msr" style={{ fontSize: 16 }} aria-hidden>
-                arrow_downward
-              </span>
-              {newBelow > 0 ? `${newBelow} new` : null}
-            </button>
-          )}
-          {showEmoji && (
-            <div
-              className="card"
-              style={{ maxWidth: "none", marginBottom: 8, padding: 12, maxHeight: 240, overflowY: "auto" }}
-            >
-              <input
-                placeholder="Search emojis..."
-                value={emojiSearch}
-                onChange={(e) => setEmojiSearch(e.target.value)}
-                style={{ marginBottom: 10, padding: "6px 10px", fontSize: 13 }}
-              />
-              <div style={{ marginBottom: 6 }}>
-                <p style={{ fontSize: 11, color: "var(--muted)", margin: "0 0 4px" }}>Yours</p>
-                <div style={{ display: "flex", gap: 2, flexWrap: "wrap", alignItems: "center" }}>
-                  {customEmojis.map((em) => (
-                    <span key={em.id} style={{ position: "relative", display: "inline-block" }}>
+                  );
+                }
+                if (block.type === "moment") {
+                  const payload = momentPayload(block.m.content);
+                  const c = cheers[block.m.id] ?? { count: 0, mine: false };
+                  return (
+                    <div
+                      key={block.key}
+                      id={`msg-${block.m.id}`}
+                      style={{
+                        flex: "none",
+                        position: "relative",
+                        alignSelf: "center",
+                        width: narrow ? 320 : 380,
+                        maxWidth: "100%",
+                        background: "linear-gradient(135deg, #fff7e0, #ffeef6)",
+                        borderRadius: narrow ? 16 : 18,
+                        padding: "13px 16px",
+                        boxShadow: "0 6px 20px rgba(90,63,184,0.14)",
+                        textAlign: "center",
+                        overflow: "hidden",
+                      }}
+                    >
+                      <span aria-hidden style={{ position: "absolute", top: 10, left: 18, width: 6, height: 6, borderRadius: "50%", background: "#f2c452" }} />
+                      <span aria-hidden style={{ position: "absolute", top: 22, right: 30, width: 5, height: 5, borderRadius: "50%", background: "#db2777" }} />
+                      <span aria-hidden style={{ position: "absolute", bottom: 14, left: 40, width: 5, height: 5, borderRadius: 2, background: "#7c5cd6", transform: "rotate(24deg)" }} />
+                      <span aria-hidden style={{ position: "absolute", top: 8, right: 90, width: 4, height: 8, borderRadius: 2, background: "#0d9488", transform: "rotate(-18deg)" }} />
+                      <span aria-hidden style={{ position: "absolute", bottom: 20, right: 56, width: 6, height: 6, borderRadius: "50%", background: "#f2c452" }} />
+                      <p className="lg-serif" style={{ margin: 0, fontSize: 17, fontWeight: 600, color: "#2b2733" }}>
+                        {payload ? `it's ${payload.name}'s birthday 🎂` : block.m.content}
+                      </p>
                       <button
                         type="button"
-                        title={em.name}
-                        aria-label={em.name}
-                        onClick={() => setInput((v) => v + `{{emoji:${em.image_url}|${em.name}}}`)}
+                        onClick={() => cheerMoment(block.m)}
                         style={{
-                          width: 34,
-                          height: 34,
-                          padding: 2,
-                          background: "transparent",
+                          width: "auto",
+                          marginTop: 7,
+                          padding: narrow ? "10px 16px" : "7px 16px",
+                          fontSize: 12.5,
+                          fontWeight: 700,
+                          background: "#ffffff",
+                          color: "#b0387a",
                           border: "none",
-                          borderRadius: 6,
+                          borderRadius: 999,
+                          boxShadow: "0 3px 10px rgba(219,39,119,0.2)",
+                          cursor: "pointer",
                         }}
                       >
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={em.image_url}
-                          alt={em.name}
-                          style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: 4 }}
-                        />
+                        <span style={{ whiteSpace: "nowrap" }}>
+                          🎉 throw confetti{c.count > 0 ? ` — ${c.count} thrown` : ""}
+                        </span>
                       </button>
-                      <button
-                        type="button"
-                        aria-label={`Delete ${em.name} emoji`}
-                        title={`Remove :${em.name}:`}
-                        onClick={() => deleteCustomEmoji(em)}
-                        style={{
-                          position: "absolute",
-                          top: -3,
-                          right: -3,
-                          width: 14,
-                          height: 14,
-                          padding: 0,
-                          borderRadius: "50%",
-                          fontSize: 9,
-                          lineHeight: 1,
-                          background: "var(--card)",
-                          border: "1px solid var(--border)",
-                          color: "var(--muted)",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                        }}
-                      >
-                        ×
-                      </button>
-                    </span>
-                  ))}
-                  <button
-                    type="button"
-                    onClick={() => setShowAddEmoji((v) => !v)}
-                    aria-label="Add a custom emoji"
-                    title="Add your own emoji"
+                    </div>
+                  );
+                }
+                if (block.type === "poll") {
+                  return (
+                    <div key={block.key} style={{ flex: "none", display: "flex", gap: 10 }}>
+                      {!narrow && <span style={{ width: 34, flex: "none" }} aria-hidden />}
+                      <PollCard
+                        poll={block.p}
+                        votes={votes[block.p.id] ?? []}
+                        userId={userId}
+                        narrow={narrow}
+                        onVote={votePoll}
+                      />
+                    </div>
+                  );
+                }
+
+                // Grouped bubbles
+                const own = block.own;
+                const p = personTheme(block.sender);
+                const avSize = narrow ? 30 : 34;
+                return (
+                  <div
+                    key={block.key}
                     style={{
-                      width: 34,
-                      height: 34,
-                      padding: 0,
-                      fontSize: 18,
-                      lineHeight: 1,
-                      background: "transparent",
-                      border: "1px dashed var(--border)",
-                      borderRadius: 6,
-                      color: "var(--muted)",
+                      flex: "none",
+                      display: "flex",
+                      gap: narrow ? 8 : 10,
+                      alignItems: "flex-end",
+                      justifyContent: own ? "flex-end" : "flex-start",
                     }}
                   >
-                    +
-                  </button>
-                </div>
-                {showAddEmoji && (
-                  <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 6, flexWrap: "wrap" }}>
-                    <input
-                      placeholder="name"
-                      value={newEmojiName}
-                      onChange={(e) => setNewEmojiName(e.target.value)}
-                      maxLength={32}
-                      style={{ width: 100, padding: "4px 8px", fontSize: 12, marginBottom: 0 }}
-                    />
-                    <input
-                      id="custom-emoji-file"
-                      type="file"
-                      accept="image/*"
-                      disabled={emojiUploading}
-                      style={{ display: "none" }}
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) addCustomEmoji(file);
-                        e.target.value = "";
-                      }}
-                    />
-                    <label
-                      htmlFor="custom-emoji-file"
+                    {!own && (
+                      <ProfileTrigger userId={block.sender}>
+                        <Avatar userId={block.sender} name={block.name} size={avSize} />
+                      </ProfileTrigger>
+                    )}
+                    <div
                       style={{
-                        fontSize: 12,
-                        padding: "4px 10px",
-                        borderRadius: 6,
-                        border: "1px solid var(--border)",
-                        cursor: emojiUploading ? "wait" : "pointer",
+                        minWidth: 0,
+                        maxWidth: "78%",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 3,
+                        alignItems: own ? "flex-end" : "flex-start",
                       }}
                     >
-                      {emojiUploading ? "Uploading…" : "Choose image"}
-                    </label>
+                      {!own && (
+                        <p
+                          style={{
+                            margin: `0 0 -1px ${narrow ? 12 : 14}px`,
+                            fontSize: narrow ? 11.5 : 12,
+                            fontWeight: 700,
+                            color: p.name,
+                          }}
+                        >
+                          {block.name}
+                          <span style={{ fontWeight: 500, color: "#9a8fb8", fontSize: narrow ? 10.5 : 11, marginLeft: 4 }}>
+                            {msgTime(block.msgs[0].created_at)}
+                          </span>
+                        </p>
+                      )}
+                      {own && (
+                        <p style={{ margin: "0 2px -1px 0", fontSize: 10.5, fontWeight: 500, color: "#9a8fb8" }}>
+                          {msgTime(block.msgs[0].created_at)}
+                        </p>
+                      )}
+                      {block.msgs.map((m, j) => {
+                        const radius = own
+                          ? j === 0
+                            ? `18px 18px 5px 18px`
+                            : `18px 5px 5px 18px`
+                          : j === 0
+                            ? `18px 18px 18px 5px`
+                            : `5px 18px 18px 5px`;
+                        const orig =
+                          m.reply_to_id != null ? messages.find((x) => x.id === m.reply_to_id) : undefined;
+                        const rGroups = Object.entries(
+                          (reactions[m.id] ?? []).reduce(
+                            (accu, r) => {
+                              accu[r.emoji] = accu[r.emoji] ?? { count: 0, mine: false };
+                              accu[r.emoji].count += 1;
+                              if (r.user_id === userId) accu[r.emoji].mine = true;
+                              return accu;
+                            },
+                            {} as Record<string, { count: number; mine: boolean }>
+                          )
+                        );
+                        return (
+                          <div
+                            key={m.id}
+                            id={`msg-${m.id}`}
+                            className={`lg-msg-wrap${own ? " own" : ""}`}
+                            style={{ maxWidth: "100%" }}
+                          >
+                            <div
+                              onClick={() => setTappedFor((cur) => (cur === m.id ? null : m.id))}
+                              style={{
+                                background: own
+                                  ? "linear-gradient(135deg, #b39dfb, #9b7df2)"
+                                  : "var(--bubble)",
+                                color: own ? "#241a3d" : "var(--bubble-ink)",
+                                borderRadius: radius,
+                                padding:
+                                  m.kind === "voice"
+                                    ? "8px 13px"
+                                    : narrow
+                                      ? "8px 13px"
+                                      : "9px 14px",
+                                boxShadow: own
+                                  ? "0 3px 10px rgba(124,92,214,0.25)"
+                                  : "0 1px 3px var(--chat-shadow)",
+                                fontSize: narrow ? 14 : 14.5,
+                                lineHeight: 1.45,
+                                wordBreak: "break-word",
+                              }}
+                            >
+                              {orig !== undefined || m.reply_to_id != null ? (
+                                <p
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (orig) scrollToMsg(orig.id);
+                                  }}
+                                  style={{
+                                    fontSize: 12,
+                                    color: orig ? personTheme(orig.user_id).name : "inherit",
+                                    opacity: orig ? 1 : 0.7,
+                                    borderLeft: `2.5px solid ${orig ? personTheme(orig.user_id).soft : "currentColor"}`,
+                                    paddingLeft: 8,
+                                    margin: "0 0 4px",
+                                    overflow: "hidden",
+                                    textOverflow: "ellipsis",
+                                    whiteSpace: "nowrap",
+                                    cursor: orig ? "pointer" : "default",
+                                  }}
+                                >
+                                  {orig ? excerptOf(orig, orig.user_id === userId) : "Earlier message"}
+                                </p>
+                              ) : null}
+                              {m.kind === "voice" ? (
+                                <VoiceBubble m={m} />
+                              ) : m.kind === "gif" || m.kind === "image" ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  src={m.content}
+                                  alt={m.kind === "image" ? "photo" : "gif"}
+                                  style={{ maxWidth: "100%", borderRadius: 10, display: "block" }}
+                                />
+                              ) : (
+                                <span style={{ whiteSpace: "pre-wrap" }}>
+                                  {renderMessageContent(m.content).map((part, i) =>
+                                    typeof part === "string" ? (
+                                      <span key={i}>{part}</span>
+                                    ) : (
+                                      // eslint-disable-next-line @next/next/no-img-element
+                                      <img
+                                        key={i}
+                                        src={part.url}
+                                        alt={part.name}
+                                        title={part.name}
+                                        style={{
+                                          width: 20,
+                                          height: 20,
+                                          objectFit: "cover",
+                                          borderRadius: 4,
+                                          verticalAlign: "middle",
+                                          margin: "0 1px",
+                                        }}
+                                      />
+                                    )
+                                  )}
+                                  {m.edited_at && (
+                                    <span style={{ fontSize: 10, opacity: 0.6, marginLeft: 5 }}>(edited)</span>
+                                  )}
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Floating toolbar: hover on desktop, tap on touch */}
+                            <span className={`lg-msg-tools${tappedFor === m.id ? " open" : ""}`}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setReactPickerFor(reactPickerFor === m.id ? null : m.id);
+                                  setMsgMenuFor(null);
+                                }}
+                                aria-label="React to this message"
+                                title="React"
+                              >
+                                <span className="msr" style={{ fontSize: 16 }} aria-hidden>
+                                  add_reaction
+                                </span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setReplyTo(m);
+                                  setEditingMsg(null);
+                                  inputRef.current?.focus();
+                                }}
+                                aria-label="Reply to this message"
+                                title="Reply"
+                              >
+                                <span className="msr" style={{ fontSize: 16 }} aria-hidden>
+                                  reply
+                                </span>
+                              </button>
+                              {(isCreator || isAdmin) && (
+                                <button
+                                  type="button"
+                                  onClick={() => togglePin(m)}
+                                  aria-label={m.pinned ? "Unpin this message" : "Pin this message"}
+                                  title={m.pinned ? "Unpin" : "Pin"}
+                                >
+                                  <span className="msr" style={{ fontSize: 16 }} aria-hidden>
+                                    push_pin
+                                  </span>
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setMsgMenuFor(msgMenuFor === m.id ? null : m.id);
+                                  setReactPickerFor(null);
+                                }}
+                                aria-label="More actions"
+                                title="More"
+                              >
+                                <span className="msr" style={{ fontSize: 16 }} aria-hidden>
+                                  more_horiz
+                                </span>
+                              </button>
+                            </span>
+
+                            {reactPickerFor === m.id && (
+                              <div
+                                style={{
+                                  display: "flex",
+                                  gap: 2,
+                                  margin: "4px 0 0 8px",
+                                  background: "var(--card)",
+                                  borderRadius: 999,
+                                  padding: "2px 6px",
+                                  boxShadow: "0 4px 14px rgba(44,38,53,0.18)",
+                                  width: "fit-content",
+                                }}
+                              >
+                                {QUICK_REACTIONS.map((em) => (
+                                  <button
+                                    key={em}
+                                    type="button"
+                                    onClick={() => toggleReaction(m, em)}
+                                    aria-label={`React with ${em}`}
+                                    style={{
+                                      width: "auto",
+                                      padding: "0 3px",
+                                      fontSize: 18,
+                                      background: "transparent",
+                                      border: "none",
+                                      cursor: "pointer",
+                                    }}
+                                  >
+                                    {em}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+
+                            {msgMenuFor === m.id && (
+                              <div
+                                style={{
+                                  display: "flex",
+                                  gap: 8,
+                                  margin: "4px 0 0 8px",
+                                  background: "var(--card)",
+                                  borderRadius: 999,
+                                  padding: "3px 10px",
+                                  boxShadow: "0 4px 14px rgba(44,38,53,0.18)",
+                                  width: "fit-content",
+                                  fontSize: 12,
+                                }}
+                              >
+                                {own && m.kind === "text" && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setEditingMsg(m);
+                                      setReplyTo(null);
+                                      setInput(m.content);
+                                      setMsgMenuFor(null);
+                                      inputRef.current?.focus();
+                                    }}
+                                    style={{ width: "auto", padding: "3px 4px", background: "transparent", border: "none", color: "var(--text)", fontSize: 12, cursor: "pointer" }}
+                                  >
+                                    Edit
+                                  </button>
+                                )}
+                                {!own && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setMsgMenuFor(null);
+                                      reportMessage(m);
+                                    }}
+                                    style={{ width: "auto", padding: "3px 4px", background: "transparent", border: "none", color: "var(--text)", fontSize: 12, cursor: "pointer" }}
+                                  >
+                                    Report
+                                  </button>
+                                )}
+                                {(own || isAdmin) && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setMsgMenuFor(null);
+                                      deleteMessage(m);
+                                    }}
+                                    style={{ width: "auto", padding: "3px 4px", background: "transparent", border: "none", color: "var(--error)", fontSize: 12, cursor: "pointer" }}
+                                  >
+                                    Delete
+                                  </button>
+                                )}
+                              </div>
+                            )}
+
+                            {rGroups.length > 0 && (
+                              <div
+                                style={{
+                                  display: "flex",
+                                  gap: 5,
+                                  flexWrap: "wrap",
+                                  margin: own ? "2px 8px 0 0" : "2px 0 0 8px",
+                                  justifyContent: own ? "flex-end" : "flex-start",
+                                }}
+                              >
+                                {rGroups.map(([emoji, g]) => (
+                                  <button
+                                    key={emoji}
+                                    type="button"
+                                    onClick={() => toggleReaction(m, emoji)}
+                                    aria-label={`${g.count} ${emoji} reaction${g.count === 1 ? "" : "s"}${g.mine ? ", including yours" : ""}`}
+                                    style={{
+                                      width: "auto",
+                                      padding: "2px 9px",
+                                      fontSize: 11.5,
+                                      fontWeight: 600,
+                                      whiteSpace: "nowrap",
+                                      flex: "none",
+                                      borderRadius: 999,
+                                      background: g.mine ? "var(--accent-tint)" : "var(--card)",
+                                      border: g.mine ? "1px solid var(--accent)" : "1px solid transparent",
+                                      color: g.mine ? "var(--accent-tint-text)" : "var(--text)",
+                                      boxShadow: g.mine ? "none" : "0 1px 3px var(--chat-shadow)",
+                                      cursor: "pointer",
+                                    }}
+                                  >
+                                    {emoji} {g.count}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
-                )}
-                {emojiError && (
-                  <p className="msg-error" style={{ fontSize: 11, marginTop: 4 }}>
-                    {emojiError}
-                  </p>
-                )}
-              </div>
-              {EMOJI_CATS.map(([cat, label]) => {
-                const q = emojiSearch.trim().toLowerCase();
-                const items = EMOJI_SET.filter(
-                  ([, name, c]) => c === cat && (!q || name.includes(q))
                 );
-                if (items.length === 0) return null;
-                return (
-                  <div key={cat} style={{ marginBottom: 6 }}>
-                    <p style={{ fontSize: 11, color: "var(--muted)", margin: "0 0 4px" }}>{label}</p>
-                    <div style={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
-                      {items.map(([em, name]) => (
+              })}
+              <div ref={bottomRef} />
+            </div>
+
+            {/* Emoji bursts float up the right edge */}
+            <div className="lg-burst-layer" aria-hidden>
+              {bursts.map((b) => (
+                <span key={b.id} className="lg-burst-glyph" style={{ right: b.x }}>
+                  {b.emoji}
+                </span>
+              ))}
+            </div>
+
+            {(showJump || newBelow > 0) && (
+              <button
+                type="button"
+                onClick={() => {
+                  bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+                  setNewBelow(0);
+                }}
+                aria-label="Jump to latest messages"
+                style={{
+                  position: "absolute",
+                  left: "50%",
+                  transform: "translateX(-50%)",
+                  bottom: 118,
+                  width: "auto",
+                  padding: "6px 14px",
+                  borderRadius: 999,
+                  background: "#2c2635",
+                  color: "#ffffff",
+                  border: "none",
+                  fontSize: 12,
+                  fontWeight: 700,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  boxShadow: "0 6px 18px rgba(44,38,53,0.3)",
+                  zIndex: 5,
+                  cursor: "pointer",
+                }}
+              >
+                <span className="msr" style={{ fontSize: 15 }} aria-hidden>
+                  arrow_downward
+                </span>
+                {newBelow > 0 ? `${newBelow} new` : "latest"}
+              </button>
+            )}
+
+            {showEmoji && (
+              <div
+                className="card"
+                style={{ flex: "none", maxWidth: "none", margin: "8px 0", padding: 12, maxHeight: 240, overflowY: "auto" }}
+              >
+                <input
+                  placeholder="Search emojis..."
+                  value={emojiSearch}
+                  onChange={(e) => setEmojiSearch(e.target.value)}
+                  style={{ marginBottom: 10, padding: "6px 10px", fontSize: 13 }}
+                />
+                <div style={{ marginBottom: 6 }}>
+                  <p style={{ fontSize: 11, color: "var(--muted)", margin: "0 0 4px" }}>Yours</p>
+                  <div style={{ display: "flex", gap: 2, flexWrap: "wrap", alignItems: "center" }}>
+                    {customEmojis.map((em) => (
+                      <span key={em.id} style={{ position: "relative", display: "inline-block" }}>
                         <button
-                          key={em}
                           type="button"
-                          title={name}
-                          aria-label={name}
-                          onClick={() => setInput((v) => v + em)}
+                          title={em.name}
+                          aria-label={em.name}
+                          onClick={() => setInput((v) => v + `{{emoji:${em.image_url}|${em.name}}}`)}
                           style={{
                             width: 34,
                             height: 34,
-                            padding: 0,
-                            fontSize: 20,
+                            padding: 2,
                             background: "transparent",
                             border: "none",
                             borderRadius: 6,
                           }}
                         >
-                          {em}
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={em.image_url}
+                            alt={em.name}
+                            style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: 4 }}
+                          />
                         </button>
-                      ))}
-                    </div>
+                        <button
+                          type="button"
+                          aria-label={`Delete ${em.name} emoji`}
+                          title={`Remove :${em.name}:`}
+                          onClick={() => deleteCustomEmoji(em)}
+                          style={{
+                            position: "absolute",
+                            top: -3,
+                            right: -3,
+                            width: 14,
+                            height: 14,
+                            padding: 0,
+                            borderRadius: "50%",
+                            fontSize: 9,
+                            lineHeight: 1,
+                            background: "var(--card)",
+                            border: "1px solid var(--border)",
+                            color: "var(--muted)",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => setShowAddEmoji((v) => !v)}
+                      aria-label="Add a custom emoji"
+                      title="Add your own emoji"
+                      style={{
+                        width: 34,
+                        height: 34,
+                        padding: 0,
+                        fontSize: 18,
+                        lineHeight: 1,
+                        background: "transparent",
+                        border: "1px dashed var(--border)",
+                        borderRadius: 6,
+                        color: "var(--muted)",
+                      }}
+                    >
+                      +
+                    </button>
                   </div>
-                );
-              })}
-            </div>
-          )}
-          {amBanned ? (
-            <p style={{ fontSize: 13, color: sub, textAlign: "center", padding: "10px 0" }}>
-              Your account is banned from posting. If you think this is a mistake, reach out via
-              the Support page.
-            </p>
-          ) : (
-          <>
-          <p style={{ fontSize: 11, color: sub, minHeight: 15, margin: "0 0 3px" }}>
-            {(() => {
-              const names = Object.values(typers)
-                .filter((t) => t.until > Date.now())
-                .map((t) => t.name);
-              if (!names.length) return "";
-              return `${names.join(", ")} ${names.length === 1 ? "is" : "are"} typing…`;
-            })()}
-          </p>
-          {(replyTo || editingMsg) && (
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                fontSize: 12,
-                color: sub,
-                margin: "0 0 6px",
-              }}
-            >
-              <span className="msr" style={{ fontSize: 14 }} aria-hidden>
-                {editingMsg ? "edit" : "reply"}
-              </span>
-              <span
-                style={{
-                  flex: 1,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
+                  {showAddEmoji && (
+                    <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 6, flexWrap: "wrap" }}>
+                      <input
+                        placeholder="name"
+                        value={newEmojiName}
+                        onChange={(e) => setNewEmojiName(e.target.value)}
+                        maxLength={32}
+                        style={{ width: 100, padding: "4px 8px", fontSize: 12, marginBottom: 0 }}
+                      />
+                      <input
+                        id="custom-emoji-file"
+                        type="file"
+                        accept="image/*"
+                        disabled={emojiUploading}
+                        style={{ display: "none" }}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) addCustomEmoji(file);
+                          e.target.value = "";
+                        }}
+                      />
+                      <label
+                        htmlFor="custom-emoji-file"
+                        style={{
+                          fontSize: 12,
+                          padding: "4px 10px",
+                          borderRadius: 6,
+                          border: "1px solid var(--border)",
+                          cursor: emojiUploading ? "wait" : "pointer",
+                        }}
+                      >
+                        {emojiUploading ? "Uploading…" : "Choose image"}
+                      </label>
+                    </div>
+                  )}
+                  {emojiError && (
+                    <p className="msg-error" style={{ fontSize: 11, marginTop: 4 }}>
+                      {emojiError}
+                    </p>
+                  )}
+                </div>
+                {EMOJI_CATS.map(([cat, label]) => {
+                  const q = emojiSearch.trim().toLowerCase();
+                  const items = EMOJI_SET.filter(
+                    ([, name, c]) => c === cat && (!q || name.includes(q))
+                  );
+                  if (items.length === 0) return null;
+                  return (
+                    <div key={cat} style={{ marginBottom: 6 }}>
+                      <p style={{ fontSize: 11, color: "var(--muted)", margin: "0 0 4px" }}>{label}</p>
+                      <div style={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
+                        {items.map(([em, name]) => (
+                          <button
+                            key={em}
+                            type="button"
+                            title={name}
+                            aria-label={name}
+                            onClick={() => setInput((v) => v + em)}
+                            style={{
+                              width: 34,
+                              height: 34,
+                              padding: 0,
+                              fontSize: 20,
+                              background: "transparent",
+                              border: "none",
+                              borderRadius: 6,
+                            }}
+                          >
+                            {em}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {showPollForm && (
+              <form
+                onSubmit={createPoll}
+                className="card"
+                style={{ flex: "none", maxWidth: "none", margin: "8px 0", padding: 14 }}
               >
-                {editingMsg
-                  ? "Editing your message"
-                  : `Replying to ${replyTo!.user_id === userId ? "yourself" : replyTo!.display_name}: ${
-                      replyTo!.kind === "text"
-                        ? replyTo!.content.replace(CUSTOM_EMOJI_RE, "▪").slice(0, 60)
-                        : replyTo!.kind === "image"
-                          ? "📷 Photo"
-                          : "GIF"
-                    }`}
+                <h3 style={{ fontSize: 14, marginBottom: 8 }}>New poll ✨</h3>
+                <input
+                  placeholder="the question…"
+                  value={pollQ}
+                  onChange={(e) => setPollQ(e.target.value)}
+                  maxLength={200}
+                  style={{ marginBottom: 8 }}
+                />
+                {pollOpts.map((opt, i) => (
+                  <input
+                    key={i}
+                    placeholder={`option ${i + 1}`}
+                    value={opt}
+                    onChange={(e) =>
+                      setPollOpts((prev) => prev.map((o, j) => (j === i ? e.target.value : o)))
+                    }
+                    maxLength={80}
+                    style={{ marginBottom: 8 }}
+                  />
+                ))}
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  {pollOpts.length < 4 && (
+                    <button
+                      type="button"
+                      onClick={() => setPollOpts((prev) => [...prev, ""])}
+                      style={{ width: "auto", padding: "6px 12px", fontSize: 12, borderRadius: 999, background: "var(--bg)", border: "1px dashed var(--border)", color: "var(--muted)" }}
+                    >
+                      + option
+                    </button>
+                  )}
+                  <select
+                    value={pollCloseMins}
+                    onChange={(e) => setPollCloseMins(Number(e.target.value))}
+                    aria-label="When the poll closes"
+                    style={{
+                      width: "auto",
+                      padding: "6px 10px",
+                      borderRadius: 8,
+                      border: "1px solid var(--border)",
+                      background: "var(--bg)",
+                      color: "var(--text)",
+                      fontSize: 12,
+                      fontFamily: "inherit",
+                    }}
+                  >
+                    <option value={0}>stays open</option>
+                    <option value={60}>closes in 1 hour</option>
+                    <option value={180}>closes in 3 hours</option>
+                    <option value={1440}>closes tomorrow</option>
+                  </select>
+                  <button
+                    className="primary"
+                    type="submit"
+                    style={{ width: "auto", padding: "6px 16px", fontSize: 13, marginLeft: "auto" }}
+                  >
+                    Ask the room
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowPollForm(false)}
+                    style={{ width: "auto", padding: "6px 12px", fontSize: 13, background: "var(--card)", color: "var(--muted)", border: "1px solid var(--border)" }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {amBanned ? (
+              <p style={{ flex: "none", fontSize: 13, color: sub, textAlign: "center", padding: "10px 0 14px" }}>
+                Your account is banned from posting. If you think this is a mistake, reach out via
+                the Support page.
+              </p>
+            ) : (
+              <div style={{ flex: "none", padding: `6px 0 calc(${narrow ? 14 : 16}px + var(--safe-bottom))`, position: "relative" }}>
+                {/* Typing + burst rail */}
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 7,
+                    marginBottom: 7,
+                    fontSize: 11.5,
+                    color: sub,
+                    minHeight: narrow ? 34 : 30,
+                  }}
+                >
+                  {typingLine && (
+                    <>
+                      <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {typingLine}
+                      </span>
+                      <TypingDots />
+                    </>
+                  )}
+                  <span style={{ marginLeft: "auto", display: "inline-flex", gap: 4, alignItems: "center" }}>
+                    {!narrow && (
+                      <span
+                        style={{
+                          fontSize: 10.5,
+                          fontWeight: 700,
+                          letterSpacing: "0.1em",
+                          textTransform: "uppercase",
+                          color: "#9a8fb8",
+                        }}
+                      >
+                        burst
+                      </span>
+                    )}
+                    {BURSTS.map((em) => (
+                      <button
+                        key={em}
+                        type="button"
+                        onClick={() => sendBurst(em)}
+                        aria-label={`Send a ${em} burst`}
+                        title="Bursts float up for everyone"
+                        style={{
+                          width: narrow ? 34 : 30,
+                          height: narrow ? 34 : 30,
+                          flex: "none",
+                          padding: 0,
+                          borderRadius: "50%",
+                          background: "var(--chat-veil)",
+                          boxShadow: "0 2px 8px var(--chat-shadow)",
+                          border: "none",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontSize: narrow ? 17 : 15,
+                          cursor: "pointer",
+                        }}
+                      >
+                        {em}
+                      </button>
+                    ))}
+                  </span>
+                </div>
+
+                {(replyTo || editingMsg) && (
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      fontSize: 12,
+                      color: sub,
+                      margin: "0 0 6px",
+                    }}
+                  >
+                    <span className="msr" style={{ fontSize: 14 }} aria-hidden>
+                      {editingMsg ? "edit" : "reply"}
+                    </span>
+                    <span
+                      style={{
+                        flex: 1,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {editingMsg
+                        ? "Editing your message"
+                        : `Replying to ${replyTo!.user_id === userId ? "yourself" : replyTo!.display_name}: ${
+                            replyTo!.kind === "text"
+                              ? replyTo!.content.replace(CUSTOM_EMOJI_RE, "▪").slice(0, 60)
+                              : replyTo!.kind === "image"
+                                ? "📷 Photo"
+                                : replyTo!.kind === "voice"
+                                  ? "🎙️ Voice note"
+                                  : "GIF"
+                          }`}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setReplyTo(null);
+                        if (editingMsg) {
+                          setEditingMsg(null);
+                          setInput("");
+                        }
+                      }}
+                      aria-label={editingMsg ? "Cancel editing" : "Cancel reply"}
+                      style={{
+                        width: 20,
+                        height: 20,
+                        padding: 0,
+                        borderRadius: "50%",
+                        fontSize: 12,
+                        lineHeight: 1,
+                        background: "transparent",
+                        border: "1px solid var(--border)",
+                        color: "inherit",
+                      }}
+                    >
+                      ×
+                    </button>
+                  </div>
+                )}
+
+                {/* Composer pill */}
+                <div style={{ position: "relative" }}>
+                  {showAttach && (
+                    <div
+                      style={{
+                        position: "absolute",
+                        bottom: "calc(100% + 8px)",
+                        left: 0,
+                        zIndex: 30,
+                        display: "flex",
+                        flexDirection: "column",
+                        minWidth: 180,
+                        padding: 6,
+                        background: "var(--card)",
+                        border: "1px solid var(--border)",
+                        borderRadius: 12,
+                        boxShadow: "0 14px 34px var(--lift)",
+                      }}
+                    >
+                      <label htmlFor="chat-photo-file" style={{ ...menuItem, margin: 0, cursor: attachBusy ? "wait" : "pointer" }}>
+                        <span className="msr" style={{ fontSize: 17, color: "var(--muted)" }} aria-hidden>
+                          image
+                        </span>
+                        Send a photo
+                      </label>
+                      <button
+                        type="button"
+                        style={menuItem}
+                        onClick={() => {
+                          setShowAttach(false);
+                          setShowPollForm(true);
+                        }}
+                      >
+                        <span className="msr" style={{ fontSize: 17, color: "var(--muted)" }} aria-hidden>
+                          ballot
+                        </span>
+                        Start a poll
+                      </button>
+                      {(isCreator || isAdmin) && (
+                        <button
+                          type="button"
+                          style={menuItem}
+                          onClick={() => {
+                            setShowAttach(false);
+                            celebrate();
+                          }}
+                        >
+                          <span className="msr" style={{ fontSize: 17, color: "var(--muted)" }} aria-hidden>
+                            cake
+                          </span>
+                          Celebrate a girl
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  <form
+                    onSubmit={send}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: narrow ? 4 : 6,
+                      background: "var(--card)",
+                      borderRadius: 999,
+                      padding: narrow ? "5px 5px 5px 6px" : "6px 6px 6px 8px",
+                      boxShadow: "0 8px 24px var(--chat-shadow)",
+                    }}
+                  >
+                    <input
+                      id="chat-photo-file"
+                      type="file"
+                      accept="image/*"
+                      disabled={attachBusy}
+                      style={{ display: "none" }}
+                      onChange={(e) => {
+                        setShowAttach(false);
+                        const file = e.target.files?.[0];
+                        if (file) sendImage(file);
+                        e.target.value = "";
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowAttach((v) => !v)}
+                      aria-label="Add to the chat"
+                      aria-expanded={showAttach}
+                      title="Photos, polls…"
+                      style={{
+                        ...composerCircle(narrow ? 44 : 34),
+                        background: "var(--bubble-soft)",
+                      }}
+                    >
+                      <span className="msr" style={{ fontSize: narrow ? 22 : 20, lineHeight: 1, display: "block" }} aria-hidden>
+                        {attachBusy ? "hourglass_top" : "add"}
+                      </span>
+                    </button>
+                    {!narrow && (
+                      <button
+                        type="button"
+                        onClick={() => setShowEmoji((v) => !v)}
+                        aria-label="Emoji picker"
+                        title="Emoji"
+                        style={composerCircle(34)}
+                      >
+                        <span className="msr" style={{ fontSize: 20, lineHeight: 1, display: "block" }} aria-hidden>
+                          mood
+                        </span>
+                      </button>
+                    )}
+                    {recording ? (
+                      <span
+                        style={{
+                          flex: 1,
+                          minWidth: 0,
+                          fontSize: 14,
+                          color: "#b0387a",
+                          fontWeight: 600,
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 8,
+                        }}
+                      >
+                        <span
+                          className="lg-pulse-dot"
+                          style={{
+                            width: 8,
+                            height: 8,
+                            borderRadius: "50%",
+                            background: "#db2777",
+                            animation: "lgPulse 1.4s ease-in-out infinite",
+                          }}
+                          aria-hidden
+                        />
+                        recording… {recSecs}s — release to send
+                      </span>
+                    ) : (
+                      <input
+                        ref={inputRef}
+                        value={input}
+                        onChange={(e) => {
+                          setInput(e.target.value);
+                          pingTyping();
+                        }}
+                        placeholder={editingMsg ? "Edit your message" : "say something…"}
+                        style={{
+                          flex: 1,
+                          minWidth: 0,
+                          margin: 0,
+                          border: "none",
+                          background: "transparent",
+                          height: narrow ? 44 : 34,
+                          padding: "0 6px",
+                          boxSizing: "border-box",
+                          fontSize: 14.5,
+                          color: "var(--text)",
+                        }}
+                      />
+                    )}
+                    <button
+                      type="button"
+                      onPointerDown={(e) => {
+                        e.preventDefault();
+                        startRecording();
+                      }}
+                      onPointerUp={() => stopRecording(false)}
+                      onPointerLeave={() => recording && stopRecording(false)}
+                      onContextMenu={(e) => e.preventDefault()}
+                      aria-label="Hold to record a voice note"
+                      title="Hold to record a voice note"
+                      style={{
+                        ...composerCircle(narrow ? 44 : 34),
+                        background: "#fbe0ef",
+                        color: "#b0387a",
+                        touchAction: "none",
+                      }}
+                    >
+                      <span className="msr" style={{ fontSize: narrow ? 22 : 20, lineHeight: 1, display: "block" }} aria-hidden>
+                        mic
+                      </span>
+                    </button>
+                    <button
+                      type="submit"
+                      aria-label={editingMsg ? "Save edit" : "Send message"}
+                      title={editingMsg ? "Save" : "Send"}
+                      style={{
+                        ...composerCircle(narrow ? 44 : 38),
+                        background: "linear-gradient(135deg, #8b6cf0, #7c5cd6)",
+                        color: "#ffffff",
+                        boxShadow: "0 4px 12px rgba(124,92,214,0.4)",
+                      }}
+                    >
+                      <span className="msr" style={{ fontSize: narrow ? 21 : 19, lineHeight: 1, display: "block" }} aria-hidden>
+                        {editingMsg ? "check" : "send"}
+                      </span>
+                    </button>
+                  </form>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Room-life panel (desktop ≥1080px, CSS-gated) */}
+          <aside className="lg-roomlife">
+            <div>
+              <PanelLabel color="var(--accent)">on the couch rn</PanelLabel>
+              {couch.length > 0 ? (
+                renderCouchGrid(4, 36)
+              ) : (
+                <p style={{ fontSize: 11.5, color: sub, margin: 0 }}>just you so far 🛋️</p>
+              )}
+            </div>
+            {renderPlaylistCard(true)}
+            {renderWaitingCard()}
+          </aside>
+        </div>
+      )}
+
+      {/* Mobile room-life sheet */}
+      {sheetOpen && (
+        <>
+          <div
+            onClick={() => setSheetOpen(false)}
+            style={{ position: "fixed", inset: 0, background: "rgba(44,38,53,0.25)", zIndex: 60 }}
+          />
+          <div
+            className="lg-room-sheet"
+            style={{
+              position: "fixed",
+              left: 0,
+              right: 0,
+              bottom: 0,
+              zIndex: 61,
+              background: "var(--card)",
+              borderRadius: "26px 26px 0 0",
+              boxShadow: "0 -12px 40px rgba(44,38,53,0.25)",
+              padding: "10px 18px calc(22px + var(--safe-bottom))",
+              maxHeight: "82vh",
+              overflowY: "auto",
+              animation: "lgSheetUp .28s cubic-bezier(0.2, 0.8, 0.2, 1)",
+            }}
+            role="dialog"
+            aria-label="Room life"
+          >
+            <span
+              aria-hidden
+              style={{
+                display: "block",
+                width: 44,
+                height: 5,
+                borderRadius: 999,
+                background: "var(--border)",
+                margin: "0 auto 12px",
+              }}
+            />
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+              <p className="lg-serif" style={{ margin: 0, fontSize: 19, fontWeight: 700, color: "var(--text)" }}>
+                room life
+              </p>
+              <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--accent)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {room.name}
               </span>
               <button
                 type="button"
-                onClick={() => {
-                  setReplyTo(null);
-                  if (editingMsg) {
-                    setEditingMsg(null);
-                    setInput("");
-                  }
-                }}
-                aria-label={editingMsg ? "Cancel editing" : "Cancel reply"}
+                onClick={() => setSheetOpen(false)}
+                aria-label="Close"
                 style={{
-                  width: 20,
-                  height: 20,
+                  marginLeft: "auto",
+                  width: 44,
+                  height: 44,
+                  flex: "none",
                   padding: 0,
                   borderRadius: "50%",
-                  fontSize: 12,
-                  lineHeight: 1,
-                  background: "transparent",
-                  border: "1px solid var(--border)",
-                  color: "inherit",
+                  background: "var(--bubble-soft)",
+                  color: "var(--muted)",
+                  border: "none",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  cursor: "pointer",
                 }}
               >
-                ×
+                <span className="msr" style={{ fontSize: 20 }} aria-hidden>
+                  close
+                </span>
               </button>
             </div>
-          )}
-          {/* Standard messenger composer: quiet round icon buttons, pill input, circular send */}
-          <form onSubmit={send} style={{ display: "flex", gap: 4, alignItems: "center" }}>
-            <button
-              type="button"
-              onClick={() => setShowEmoji((v) => !v)}
-              aria-label="Emoji picker"
-              title="Emoji"
-              style={{
-                width: 40,
-                height: 40,
-                flex: "none",
-                padding: 0,
-                borderRadius: "50%",
-                background: "transparent",
-                border: "none",
-                color: acc,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <span className="msr" style={{ fontSize: 22, lineHeight: 1, display: "block" }} aria-hidden>
-                mood
-              </span>
-            </button>
-            <input
-              id="chat-photo-file"
-              type="file"
-              accept="image/*"
-              disabled={attachBusy}
-              style={{ display: "none" }}
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) sendImage(file);
-                e.target.value = "";
-              }}
-            />
-            <label
-              htmlFor="chat-photo-file"
-              aria-label="Send a photo"
-              title="Send a photo"
-              style={{
-                width: 40,
-                height: 40,
-                flex: "none",
-                // Global form-label margin would shift this off the row's centerline
-                margin: 0,
-                borderRadius: "50%",
-                color: acc,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                cursor: attachBusy ? "wait" : "pointer",
-              }}
-            >
-              <span className="msr" style={{ fontSize: 22, lineHeight: 1, display: "block" }} aria-hidden>
-                {attachBusy ? "hourglass_top" : "image"}
-              </span>
-            </label>
-            <input
-              ref={inputRef}
-              value={input}
-              onChange={(e) => {
-                setInput(e.target.value);
-                pingTyping();
-              }}
-              placeholder={editingMsg ? "Edit your message" : "Say something…"}
-              style={{
-                marginBottom: 0,
-                borderRadius: 999,
-                height: 40,
-                padding: "0 16px",
-                boxSizing: "border-box",
-              }}
-            />
-            <button
-              className="primary"
-              type="submit"
-              aria-label={editingMsg ? "Save edit" : "Send message"}
-              title={editingMsg ? "Save" : "Send"}
-              style={{
-                width: 40,
-                height: 40,
-                flex: "none",
-                padding: 0,
-                borderRadius: "50%",
-                marginLeft: 4,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <span className="msr" style={{ fontSize: 20, lineHeight: 1, display: "block" }} aria-hidden>
-                {editingMsg ? "check" : "send"}
-              </span>
-            </button>
-          </form>
-          </>
-          )}
+            <PanelLabel color="var(--accent)">on the couch rn · {hereNow}</PanelLabel>
+            <div style={{ marginBottom: 16 }}>
+              {couch.length > 0 ? renderCouchGrid(5, 44) : <p style={{ fontSize: 12, color: "var(--muted)", margin: 0 }}>just you so far 🛋️</p>}
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {renderPlaylistCard(false)}
+              {renderWaitingCard()}
+            </div>
+            <div style={{ display: "flex", gap: 14, marginTop: 16, flexWrap: "wrap", fontSize: 13 }}>
+              {room.rules && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSheetOpen(false);
+                    setShowRules(true);
+                  }}
+                  style={{ width: "auto", padding: 0, background: "transparent", border: "none", color: "var(--accent)", textDecoration: "underline", textUnderlineOffset: 3, cursor: "pointer", fontSize: 13 }}
+                >
+                  room rules
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={copyInvite}
+                style={{ width: "auto", padding: 0, background: "transparent", border: "none", color: "var(--accent)", textDecoration: "underline", textUnderlineOffset: 3, cursor: "pointer", fontSize: 13 }}
+              >
+                invite a girl
+              </button>
+              {isCreator && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSheetOpen(false);
+                    setShowSettings(true);
+                  }}
+                  style={{ width: "auto", padding: 0, background: "transparent", border: "none", color: "var(--accent)", textDecoration: "underline", textUnderlineOffset: 3, cursor: "pointer", fontSize: 13 }}
+                >
+                  settings{requests.length > 0 ? ` (${requests.length})` : ""}
+                </button>
+              )}
+              {member && !isCreator && (
+                <button
+                  type="button"
+                  onClick={leave}
+                  style={{ width: "auto", padding: 0, background: "transparent", border: "none", color: "var(--muted)", textDecoration: "underline", textUnderlineOffset: 3, cursor: "pointer", fontSize: 13 }}
+                >
+                  leave the room
+                </button>
+              )}
+            </div>
+          </div>
         </>
       )}
-      </div>
-      </main>
-    </>
+
+      <ConfettiLayer bursts={confetti} />
+    </main>
   );
 }

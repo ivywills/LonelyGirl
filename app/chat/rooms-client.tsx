@@ -19,6 +19,8 @@ export type Room = {
   is_private: boolean;
   rules: string;
   welcome_message: string;
+  /** The wall playlist shown in the room-life panel — see supabase/room-redesign.sql. */
+  playlist_id?: string | null;
   /** Which rail the room shows up in. Sectionless rooms fall into "More rooms". */
   section_id: string | null;
   /**
@@ -134,6 +136,15 @@ export const ROOM_COLORS = [
 ];
 
 /*
+ * The room page's soft three-stop gradient: a lighter lift at the top, the
+ * room colour through the middle, a slight warm shift at the bottom. The mix
+ * targets are theme vars so it lifts toward white in light and depth in dark.
+ */
+function roomGradient(bg: string): string {
+  return `linear-gradient(160deg, color-mix(in srgb, ${bg} 62%, var(--grad-hi)) 0%, ${bg} 58%, color-mix(in srgb, ${bg} 55%, var(--grad-tail)) 100%)`;
+}
+
+/*
  * Every colour in ROOM_COLORS has a dark and light display variant defined as
  * CSS vars in globals.css (--room-<hex>). roomSurface() resolves a stored hex
  * to theme-aware colours; unknown/legacy hexes fall back to fixed colours
@@ -144,6 +155,7 @@ export function roomSurface(hex: string) {
   if (ROOM_COLORS.includes(`#${key}`)) {
     return {
       bg: `var(--room-${key})`,
+      grad: roomGradient(`var(--room-${key})`),
       ink: "var(--room-ink)",
       sub: "var(--room-sub)",
       acc: "var(--room-acc)",
@@ -156,8 +168,10 @@ export function roomSurface(hex: string) {
   if (!isLight(hex)) {
     // Legacy/custom dark colour: keep it in dark mode, auto-pastel it in light
     // mode by mixing toward white (see --room-mix in globals.css)
+    const bg = `color-mix(in srgb, ${hex} var(--room-mix), var(--room-mix-on))`;
     return {
-      bg: `color-mix(in srgb, ${hex} var(--room-mix), var(--room-mix-on))`,
+      bg,
+      grad: roomGradient(bg),
       ink: "var(--room-ink)",
       sub: "var(--room-sub)",
       acc: "var(--room-acc)",
@@ -170,6 +184,7 @@ export function roomSurface(hex: string) {
   // Rare light custom colour: fixed dark inks work in both themes
   return {
     bg: hex,
+    grad: roomGradient(hex),
     ink: "#262130",
     sub: "rgba(38,33,48,0.62)",
     acc: "#6d4fc4",
@@ -178,6 +193,28 @@ export function roomSurface(hex: string) {
     success: "#2e7d4f",
     warn: "#8a6d1a",
   };
+}
+
+/*
+ * Person palette for chat avatars and name lines: pastel avatar chip with a
+ * deep ink initial (readable in both themes), plus a theme-var name colour
+ * (--pn-<i> in globals.css: deep in light mode, pastel in dark) and a soft
+ * variant for reply-excerpt borders and voice-note waveforms.
+ */
+export const PERSON_COLORS = [
+  { av: "#e4d9fb", avInk: "#5b3fb8", soft: "#cdbcff" },
+  { av: "#d2efe9", avInk: "#0b6f66", soft: "#7fd4c6" },
+  { av: "#f9dcea", avInk: "#a81d5b", soft: "#f3a8cd" },
+  { av: "#f6ead0", avInk: "#8a6d1a", soft: "#eccf8d" },
+  { av: "#d8e4fb", avInk: "#1e50c8", soft: "#a9c4f8" },
+  { av: "#fbdae2", avInk: "#be123c", soft: "#f5a9bc" },
+];
+
+export function personTheme(userId: string) {
+  let h = 0;
+  for (let i = 0; i < userId.length; i++) h = (h * 31 + userId.charCodeAt(i)) | 0;
+  const i = Math.abs(h) % PERSON_COLORS.length;
+  return { ...PERSON_COLORS[i], name: `var(--pn-${i})` };
 }
 
 export function ImagePicker({

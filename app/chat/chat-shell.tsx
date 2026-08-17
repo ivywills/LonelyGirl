@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import ChatSidebar, { type SidebarRoom } from "@/app/chat/chat-sidebar";
+import RoomsDock from "@/app/chat/rooms-dock";
 
 /*
  * The narrow-screen sidebar toggle used to be a button floating above the page.
@@ -31,14 +32,19 @@ export default function ChatShell({
     setOpen(false);
   }, [pathname]);
 
+  // Inside a room the shell trades the 280px sidebar for the 74px dock and
+  // drops the fixed-topbar padding — the room draws its own header.
+  const inRoom = /^\/chat\/[^/]+$/.test(pathname ?? "");
+
   return (
     <ChatMenuContext.Provider value={() => setOpen((v) => !v)}>
-      <div className="chat-shell">
+      <div className={`chat-shell${inRoom ? " lg-room-mode" : ""}`}>
         <div
           className={`chat-sidebar-backdrop${open ? " open" : ""}`}
           onClick={() => setOpen(false)}
         />
         <ChatSidebar rooms={rooms} className={open ? "open" : ""} />
+        {inRoom && <RoomsDock rooms={rooms} />}
         <div className="chat-main">{children}</div>
       </div>
     </ChatMenuContext.Provider>
