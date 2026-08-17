@@ -1535,6 +1535,13 @@ export default function RoomClient({
     trackRef.current = { ...trackRef.current, voiceId: voiceIdRef.current, muted: true };
     channelRef.current?.track(trackRef.current);
     // …then bring the mic in whenever permission lands.
+    acquireMic();
+  }
+
+  /** Ask for the mic and wire it into every live connection. Retryable —
+   *  the 🎧 button calls this again after a denied prompt. */
+  async function acquireMic() {
+    if (micStreamRef.current) return;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true },
@@ -1555,7 +1562,7 @@ export default function RoomClient({
       trackRef.current = { ...trackRef.current, muted: false };
       channelRef.current?.track(trackRef.current);
     } catch {
-      setNotice("Mic unavailable — you're on the couch listen-only 🎧");
+      setNotice("Mic blocked — allow the microphone for this site, then tap 🎧 to retry.");
     }
   }
 
@@ -2139,7 +2146,7 @@ export default function RoomClient({
                 <Avatar userId={c.uid} name={c.name} size={size} />
               </span>
             ) : (
-              <ProfileTrigger userId={c.uid}>
+              <ProfileTrigger userId={c.uid} style={{ width: "auto", display: "inline-flex" }}>
                 <span
                   style={
                     c.status === "chatty" || c.onCouch
@@ -2222,9 +2229,8 @@ export default function RoomClient({
           <div style={{ display: "flex", gap: 6 }}>
             <button
               type="button"
-              onClick={toggleMute}
-              disabled={!micStreamRef.current}
-              title={!micStreamRef.current ? "You joined listen-only" : undefined}
+              onClick={() => (micStreamRef.current ? toggleMute() : acquireMic())}
+              title={!micStreamRef.current ? "You're listen-only — tap to turn your mic on" : undefined}
               style={{
                 flex: 1,
                 width: "auto",
@@ -2235,11 +2241,10 @@ export default function RoomClient({
                 border: "none",
                 fontSize: tall ? 13 : 12,
                 fontWeight: 700,
-                cursor: micStreamRef.current ? "pointer" : "default",
-                opacity: micStreamRef.current ? 1 : 0.6,
+                cursor: "pointer",
               }}
             >
-              {!micStreamRef.current ? "🎧 listen-only" : micMuted ? "🔇 unmute" : "🎙️ mute"}
+              {!micStreamRef.current ? "🎧 enable mic" : micMuted ? "🔇 unmute" : "🎙️ mute"}
             </button>
             <button
               type="button"
@@ -2527,48 +2532,43 @@ export default function RoomClient({
       {narrow ? (
         <>
           {member && (
+            // One labelled pill instead of a mystery ⋯ — the couch (voice),
+            // playlist and waiting room all live in the sheet behind it
             <button
               type="button"
               onClick={() => setSheetOpen(true)}
-              aria-label="Who's here"
-              style={{ width: "auto", padding: 0, background: "transparent", border: "none", display: "inline-flex", cursor: "pointer" }}
+              aria-label={`Open the couch — who's here, voice and the playlist${voiceCount > 0 ? ` (${voiceCount} live)` : ""}`}
+              style={{
+                width: "auto",
+                minHeight: 44,
+                padding: "5px 12px 5px 6px",
+                background: "var(--card)",
+                border: "none",
+                borderRadius: 999,
+                boxShadow: "0 2px 8px var(--chat-shadow)",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                cursor: "pointer",
+              }}
             >
-              {couch.slice(0, 2).map((c, i) => (
-                <span key={c.uid} style={{ marginLeft: i === 0 ? 0 : -8, display: "inline-flex", borderRadius: "50%", border: "2px solid var(--card)" }}>
-                  <Avatar userId={c.uid} name={c.name} size={26} />
-                </span>
-              ))}
-              {couch.length > 2 && (
-                <span
-                  style={{
-                    width: 26,
-                    height: 26,
-                    marginLeft: -8,
-                    borderRadius: "50%",
-                    background: "var(--card)",
-                    border: "2px solid var(--border)",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: 9,
-                    fontWeight: 700,
-                    color: "var(--accent)",
-                  }}
-                >
-                  +{couch.length - 2}
-                </span>
-              )}
-            </button>
-          )}
-          {member && (
-            <button
-              type="button"
-              onClick={() => setSheetOpen(true)}
-              aria-label="Room life"
-              style={composerCircle(44)}
-            >
-              <span className="msr" style={{ fontSize: 22 }} aria-hidden>
-                more_horiz
+              <span style={{ display: "inline-flex" }} aria-hidden>
+                {couch.slice(0, 2).map((c, i) => (
+                  <span key={c.uid} style={{ marginLeft: i === 0 ? 0 : -8, display: "inline-flex", borderRadius: "50%", border: "2px solid var(--card)" }}>
+                    <Avatar userId={c.uid} name={c.name} size={26} />
+                  </span>
+                ))}
+                {couch.length === 0 && <span style={{ fontSize: 17 }}>🛋️</span>}
+              </span>
+              <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--accent)", whiteSpace: "nowrap" }}>
+                couch
+                {voiceCount > 0 ? (
+                  <span style={{ color: "var(--success)" }}> · {voiceCount} live</span>
+                ) : couch.length > 2 ? (
+                  ` · ${couch.length}`
+                ) : (
+                  ""
+                )}
               </span>
             </button>
           )}
@@ -3268,7 +3268,12 @@ export default function RoomClient({
                     }}
                   >
                     {!own && (
-                      <ProfileTrigger userId={block.sender}>
+                      // width:auto beats the global button{width:100%} — without
+                      // it the trigger swallows the row and the avatar floats
+                      <ProfileTrigger
+                        userId={block.sender}
+                        style={{ width: "auto", flex: "none", display: "inline-flex" }}
+                      >
                         <Avatar userId={block.sender} name={block.name} size={avSize} />
                       </ProfileTrigger>
                     )}
