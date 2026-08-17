@@ -2532,42 +2532,57 @@ export default function RoomClient({
       {narrow ? (
         <>
           {member && (
-            // One labelled pill instead of a mystery ⋯ — the couch (voice),
-            // playlist and waiting room all live in the sheet behind it
+            // A labelled, newcomer-readable opener for the room-life sheet
             <button
               type="button"
               onClick={() => setSheetOpen(true)}
-              aria-label={`Open the couch — who's here, voice and the playlist${voiceCount > 0 ? ` (${voiceCount} live)` : ""}`}
+              aria-label={`See who's here — voice couch and the room playlist${voiceCount > 0 ? ` (${voiceCount} on voice)` : ""}`}
               style={{
                 width: "auto",
                 minHeight: 44,
-                padding: "5px 12px 5px 6px",
-                background: "var(--card)",
+                padding: "5px 13px 5px 7px",
+                background: "var(--accent-tint)",
                 border: "none",
                 borderRadius: 999,
-                boxShadow: "0 2px 8px var(--chat-shadow)",
                 display: "inline-flex",
                 alignItems: "center",
-                gap: 6,
+                gap: 7,
                 cursor: "pointer",
               }}
             >
               <span style={{ display: "inline-flex" }} aria-hidden>
                 {couch.slice(0, 2).map((c, i) => (
-                  <span key={c.uid} style={{ marginLeft: i === 0 ? 0 : -8, display: "inline-flex", borderRadius: "50%", border: "2px solid var(--card)" }}>
-                    <Avatar userId={c.uid} name={c.name} size={26} />
+                  <span key={c.uid} style={{ marginLeft: i === 0 ? 0 : -9, display: "inline-flex", borderRadius: "50%", border: "2px solid var(--card)" }}>
+                    <Avatar userId={c.uid} name={c.name} size={25} />
                   </span>
                 ))}
-                {couch.length === 0 && <span style={{ fontSize: 17 }}>🛋️</span>}
+                {couch.length === 0 && <span style={{ fontSize: 16 }}>🛋️</span>}
               </span>
-              <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--accent)", whiteSpace: "nowrap" }}>
-                couch
-                {voiceCount > 0 ? (
-                  <span style={{ color: "var(--success)" }}> · {voiceCount} live</span>
-                ) : couch.length > 2 ? (
-                  ` · ${couch.length}`
-                ) : (
-                  ""
+              <span
+                style={{
+                  fontSize: 12.5,
+                  fontWeight: 700,
+                  color: "var(--accent-tint-text)",
+                  whiteSpace: "nowrap",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 5,
+                }}
+              >
+                who&apos;s here{hereNow > 2 ? ` · ${hereNow}` : ""}
+                {voiceCount > 0 && (
+                  <span
+                    className="lg-pulse-dot"
+                    style={{
+                      width: 7,
+                      height: 7,
+                      borderRadius: "50%",
+                      background: "var(--success)",
+                      display: "inline-block",
+                      animation: "lgPulse 2.4s ease-in-out infinite",
+                    }}
+                    aria-hidden
+                  />
                 )}
               </span>
             </button>
