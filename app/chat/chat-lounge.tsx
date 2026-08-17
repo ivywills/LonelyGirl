@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import PageHeader from "@/app/page-header";
+import DecoClip from "@/app/deco-clip";
 import { Avatar } from "@/app/profile-card";
 import { roomSurface, type Room } from "@/app/chat/rooms-client";
 import type { RoomActivity } from "@/app/chat/rooms-client";
@@ -73,18 +74,22 @@ export default function ChannelLounge({
       </PageHeader>
 
       <main className="lg-page" style={{ maxWidth: 880 }}>
-        <p
-          style={{
-            fontSize: 11,
-            letterSpacing: "0.14em",
-            textTransform: "uppercase",
-            color: "var(--muted)",
-            fontWeight: 600,
-            margin: "4px 0 14px",
-          }}
-        >
-          Live channels
-        </p>
+        <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 14, margin: "4px 0 14px" }}>
+          <p
+            style={{
+              fontSize: 11,
+              letterSpacing: "0.14em",
+              textTransform: "uppercase",
+              color: "var(--muted)",
+              fontWeight: 600,
+              margin: 0,
+            }}
+          >
+            Live channels
+          </p>
+          {/* crop trims the clip's built-in margins ~10% per side */}
+          <DecoClip src="/chat-bubbles.mp4" size={84} crop={0.8} />
+        </div>
 
         <div
           style={{
