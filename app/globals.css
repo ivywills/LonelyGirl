@@ -3,8 +3,10 @@
  * ad/privacy blockers and the native shells can't always reach (icons were
  * rendering as their ligature names on some devices).
  *
- * The icon font is SUBSET to the names the app uses. If you add a new icon
- * and it shows as text, refetch with the new name appended:
+ * The icon font is SUBSET to every icon name found in app/ (all string
+ * tokens intersected with fonts.google.com/metadata/icons, so tuple arrays
+ * and JSX children are covered alike). If a new icon renders as text,
+ * refetch with the new name added:
  *   curl -A "Mozilla/5.0 ... Chrome/126.0" "https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,300..600,0..1,-50..200&icon_names=<comma,separated,names>&display=block"
  *   then download the woff2 URL it returns over public/fonts/material-symbols-rounded.woff2
  */
