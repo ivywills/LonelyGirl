@@ -34,7 +34,7 @@ type Reaction = { user_id: string; emoji: string };
 const QUICK_REACTIONS = ["❤️", "👍", "😂", "😮", "😢", "🔥"];
 
 /** The burst rail: taps float up the chat edge for everyone, nothing stored. */
-const BURSTS = ["💜", "😂", "😭", "✨", "💅"];
+const BURSTS = ["💙", "😂", "😭", "✨", "🎉"];
 
 const CONFETTI_COLORS = ["#f2c452", "#db2777", "#38b6ff", "#0d9488"];
 
@@ -278,9 +278,9 @@ const MOMENT_TYPES: {
   {
     key: "welcome",
     chip: "welcome",
-    icon: "💜",
+    icon: "💙",
     placeholder: "who just joined us?",
-    title: (n) => `welcome to the room, ${n} 💜`,
+    title: (n) => `welcome to the room, ${n} 💙`,
     cheer: "👋 say hi",
     confetti: true,
     grad: "linear-gradient(135deg, #e8f6f1, #e3f4ff)",
@@ -291,7 +291,7 @@ const MOMENT_TYPES: {
     icon: "📣",
     placeholder: "what does the room need to know?",
     title: (t) => `📣 ${t}`,
-    cheer: "💜 noted",
+    cheer: "💙 noted",
     confetti: false,
     grad: "linear-gradient(135deg, #fff7e0, #e3f4ff)",
   },
@@ -1830,7 +1830,7 @@ export default function RoomClient({
   function copyInvite() {
     navigator.clipboard
       ?.writeText(`${window.location.origin}/chat/${room.id}`)
-      .then(() => setNotice("Invite link copied 💜"))
+      .then(() => setNotice("Invite link copied 💙"))
       .catch(() => setNotice(window.location.origin + "/chat/" + room.id));
   }
 
