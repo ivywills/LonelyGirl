@@ -35,12 +35,15 @@ function formatSidebarTime(iso: string): string {
   });
 }
 
-function previewText(m: LastMessage): string {
-  if (!m) return "No messages yet";
-  if (m.kind === "system") return m.content;
-  if (m.kind === "gif") return `${m.display_name}: GIF`;
+/** Sender chip + message text, split so the name can render as a bubble. */
+function previewParts(m: LastMessage): { name: string | null; text: string } {
+  if (!m) return { name: null, text: "No messages yet" };
+  if (m.kind === "system") return { name: null, text: m.content };
+  if (m.kind === "gif") return { name: m.display_name, text: "GIF" };
+  if (m.kind === "image") return { name: m.display_name, text: "📷 photo" };
+  if (m.kind === "voice") return { name: m.display_name, text: "🎙️ voice note" };
   const clean = m.content.replace(/\{\{emoji:[^|{}]+\|([^{}]+)\}\}/g, ":$1:");
-  return `${m.display_name}: ${clean}`;
+  return { name: m.display_name, text: clean };
 }
 
 export default function ChatSidebar({
@@ -115,18 +118,53 @@ export default function ChatSidebar({
                   </span>
                 )}
               </span>
-              <span
-                style={{
-                  display: "block",
-                  fontSize: 12,
-                  color: sub,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {previewText(r.lastMessage)}
-              </span>
+              {(() => {
+                const p = previewParts(r.lastMessage);
+                return (
+                  <span
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 5,
+                      marginTop: 2,
+                      minWidth: 0,
+                    }}
+                  >
+                    {p.name && (
+                      <span
+                        style={{
+                          flexShrink: 0,
+                          maxWidth: "45%",
+                          fontSize: 10,
+                          fontWeight: 700,
+                          padding: "1px 7px",
+                          borderRadius: 999,
+                          background: s.strip,
+                          color: ink,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {p.name}
+                      </span>
+                    )}
+                    <span
+                      style={{
+                        fontSize: 12,
+                        color: ink,
+                        opacity: p.name ? 0.8 : 0.66,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                        minWidth: 0,
+                      }}
+                    >
+                      {p.text}
+                    </span>
+                  </span>
+                );
+              })()}
             </span>
           </Link>
         );

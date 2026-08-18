@@ -766,6 +766,16 @@ export default function RoomClient({
     mq.addEventListener("change", sync);
     return () => mq.removeEventListener("change", sync);
   }, []);
+  // The room-life panel is CSS-gated at ≥1080px; between that and the phone
+  // layout the header needs its own way onto the couch (the sheet).
+  const [panelHidden, setPanelHidden] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 1079px)");
+    const sync = () => setPanelHidden(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -2315,6 +2325,59 @@ export default function RoomClient({
    * Render
    * ---------------------------------------------------------------------- */
 
+  // A labelled, newcomer-readable opener for the room-life sheet. Shown on
+  // phones and on any width where the room-life panel is hidden.
+  const voiceChatPill = (
+    <button
+      type="button"
+      onClick={() => setSheetOpen(true)}
+      aria-label={`Voice chat — see who's here and hop on the couch${voiceCount > 0 ? ` (${voiceCount} on voice)` : ""}`}
+      style={{
+        width: "auto",
+        minHeight: 44,
+        padding: "5px 13px 5px 7px",
+        background: "var(--accent-tint)",
+        border: "none",
+        borderRadius: 999,
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 7,
+        cursor: "pointer",
+      }}
+    >
+      <span style={{ fontSize: 16, marginLeft: 4 }} aria-hidden>
+        🎙️
+      </span>
+      <span
+        style={{
+          fontSize: 12.5,
+          fontWeight: 700,
+          color: "var(--accent-tint-text)",
+          whiteSpace: "nowrap",
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 5,
+        }}
+      >
+        voice chat{voiceCount > 0 ? ` · ${voiceCount}` : ""}
+        {voiceCount > 0 && (
+          <span
+            className="lg-pulse-dot"
+            style={{
+              width: 7,
+              height: 7,
+              borderRadius: "50%",
+              background: "var(--success)",
+              display: "inline-block",
+              animation: "lgPulse 2.4s ease-in-out infinite",
+            }}
+            aria-hidden
+          />
+        )}
+      </span>
+    </button>
+  );
+
   const header = (
     <header
       style={{
@@ -2389,61 +2452,11 @@ export default function RoomClient({
         </p>
       </div>
       {narrow ? (
-        <>
-          {member && (
-            // A labelled, newcomer-readable opener for the room-life sheet
-            <button
-              type="button"
-              onClick={() => setSheetOpen(true)}
-              aria-label={`Voice chat — see who's here and hop on the couch${voiceCount > 0 ? ` (${voiceCount} on voice)` : ""}`}
-              style={{
-                width: "auto",
-                minHeight: 44,
-                padding: "5px 13px 5px 7px",
-                background: "var(--accent-tint)",
-                border: "none",
-                borderRadius: 999,
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 7,
-                cursor: "pointer",
-              }}
-            >
-              <span style={{ fontSize: 16, marginLeft: 4 }} aria-hidden>
-                🎙️
-              </span>
-              <span
-                style={{
-                  fontSize: 12.5,
-                  fontWeight: 700,
-                  color: "var(--accent-tint-text)",
-                  whiteSpace: "nowrap",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 5,
-                }}
-              >
-                voice chat{voiceCount > 0 ? ` · ${voiceCount}` : ""}
-                {voiceCount > 0 && (
-                  <span
-                    className="lg-pulse-dot"
-                    style={{
-                      width: 7,
-                      height: 7,
-                      borderRadius: "50%",
-                      background: "var(--success)",
-                      display: "inline-block",
-                      animation: "lgPulse 2.4s ease-in-out infinite",
-                    }}
-                    aria-hidden
-                  />
-                )}
-              </span>
-            </button>
-          )}
-        </>
+        <>{member && voiceChatPill}</>
       ) : (
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10, position: "relative" }}>
+          {/* No room-life panel below 1080px — the sheet is the way onto the couch */}
+          {member && panelHidden && voiceChatPill}
           {room.rules && (
             <button type="button" style={pillBtn} onClick={() => setShowRules((v) => !v)}>
               ✦ room rules
@@ -4243,7 +4256,25 @@ export default function RoomClient({
               on the couch rn · {hereNow}
               {voiceCount > 0 ? ` · ${voiceCount} live` : ""}
             </PanelLabel>
-            <div style={{ marginBottom: 16 }}>{renderCouch(5, 44)}</div>
+            <div style={{ marginBottom: 12 }}>{renderCouch(5, 44)}</div>
+            <button
+              type="button"
+              onClick={copyInvite}
+              style={{
+                width: "100%",
+                padding: "12px 0",
+                marginBottom: 12,
+                borderRadius: 999,
+                background: "var(--accent)",
+                color: "#131316",
+                border: "none",
+                fontSize: 13,
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              💌 invite a girl
+            </button>
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {renderWaitingCard()}
             </div>
@@ -4260,13 +4291,6 @@ export default function RoomClient({
                   room rules
                 </button>
               )}
-              <button
-                type="button"
-                onClick={copyInvite}
-                style={{ width: "auto", padding: 0, background: "transparent", border: "none", color: "var(--accent)", textDecoration: "underline", textUnderlineOffset: 3, cursor: "pointer", fontSize: 13 }}
-              >
-                invite a girl
-              </button>
               {isCreator && (
                 <button
                   type="button"

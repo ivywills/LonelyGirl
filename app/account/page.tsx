@@ -108,19 +108,21 @@ export default async function AccountPage({
             </span>
             {profile?.name ? "Edit profile" : "Set up profile"}
           </Link>
-          {isAdmin === true && (
-            <Link className="lg-cta quiet" href="/moderation">
-              <span className="msr" style={{ fontSize: 16 }} aria-hidden>
-                flag
-              </span>
-              Moderation
-            </Link>
-          )}
-          <form action={signOut}>
-            <button className="lg-cta quiet" type="submit">
-              Sign out
-            </button>
-          </form>
+          <div className="lg-acct-secondary">
+            {isAdmin === true && (
+              <Link className="lg-cta quiet" href="/moderation">
+                <span className="msr" style={{ fontSize: 16 }} aria-hidden>
+                  flag
+                </span>
+                Moderation
+              </Link>
+            )}
+            <form action={signOut}>
+              <button className="lg-cta quiet" type="submit">
+                Sign out
+              </button>
+            </form>
+          </div>
           <DeleteAccountButton />
         </div>
 

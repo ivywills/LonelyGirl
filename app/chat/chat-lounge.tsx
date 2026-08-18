@@ -245,8 +245,7 @@ export default function ChannelLounge({
         </div>
 
         <p style={{ fontSize: 13, color: "var(--muted)", textAlign: "center", marginTop: 26 }}>
-          Two channels for now, so there&apos;s always someone around. More switch on as the
-          community grows.
+          Come say hi — everyone&apos;s in one of these two. More rooms on the way.
         </p>
       </main>
     </>

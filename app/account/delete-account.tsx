@@ -18,12 +18,26 @@ export default function DeleteAccountButton() {
   }
 
   return (
+    // Destructive and rare — a quiet text link under the real actions, not a
+    // peer button she could hit by muscle memory.
     <button
       type="button"
-      className="lg-cta quiet"
       onClick={handleClick}
       disabled={busy}
-      style={{ color: "#e5484d" }}
+      style={{
+        width: "auto",
+        alignSelf: "center",
+        marginTop: 4,
+        padding: "6px 8px",
+        background: "transparent",
+        border: "none",
+        fontSize: 13,
+        fontWeight: 500,
+        color: "#e5484d",
+        textDecoration: "underline",
+        textUnderlineOffset: 3,
+        cursor: "pointer",
+      }}
     >
       {busy ? "Deleting…" : "Delete account"}
     </button>

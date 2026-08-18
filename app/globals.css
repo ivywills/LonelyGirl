@@ -848,7 +848,19 @@ body {
 
 .lg-acct-actions {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.lg-acct-actions .lg-cta {
+  width: 100%;
+  justify-content: center;
+}
+
+/* Moderation + Sign out share a row; alone, Sign out takes the full width */
+.lg-acct-secondary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   gap: 10px;
 }
 
