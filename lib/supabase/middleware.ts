@@ -60,10 +60,13 @@ export async function updateSession(request: NextRequest) {
    * guarded area until she's finished — every screen downstream assumes a
    * profile exists rather than falling back to user_metadata.
    *
-   * One indexed primary-key lookup, and only on guarded paths, so the open
-   * pages (/waitlist especially) stay a zero-query render.
+   * "/" is included so onboarding starts the moment an account exists: signup,
+   * email confirmation and OAuth all land on the home page, which used to let
+   * a brand-new account sit on the TV wall until she wandered into a guarded
+   * area. One indexed primary-key lookup, only for signed-in users on these
+   * paths, so the open pages (/waitlist especially) stay a zero-query render.
    */
-  if (user && isGuarded && !path.startsWith("/onboarding")) {
+  if (user && (isGuarded || path === "/") && !path.startsWith("/onboarding")) {
     const { data: profile } = await supabase
       .from("profiles")
       .select("name, neighborhood")
