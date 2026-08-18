@@ -196,3 +196,14 @@ begin
 exception
   when duplicate_object then null;
 end $$;
+
+-- ---------------------------------------------------------------------------
+-- Admins can pin/unpin any message (the hover toolbar offers pinning to
+-- admins as moderators; RLS previously only let room creators through).
+-- Note: as a row-level update grant this also technically lets an admin edit
+-- message content via the API — consistent with their delete powers.
+-- ---------------------------------------------------------------------------
+
+drop policy if exists "admins pin messages" on public.messages;
+create policy "admins pin messages" on public.messages
+  for update to authenticated using (public.is_admin());

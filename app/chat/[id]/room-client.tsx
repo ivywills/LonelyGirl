@@ -311,6 +311,14 @@ function excerptOf(m: Msg, own: boolean): string {
   return `${who}: ${what}`;
 }
 
+/** What a pin reads as in the strip/list — never a raw storage URL. */
+function pinLabel(m: Msg): string {
+  if (m.kind === "image") return "📷 photo";
+  if (m.kind === "gif") return "GIF";
+  if (m.kind === "voice") return "🎙️ voice note";
+  return m.content.replace(CUSTOM_EMOJI_RE, "▪");
+}
+
 async function uploadCustomEmoji(
   supabase: ReturnType<typeof createClient>,
   userId: string,
@@ -2656,8 +2664,7 @@ export default function RoomClient({
               minWidth: 0,
             }}
           >
-            <strong>pinned:</strong>{" "}
-            {pinned.map((m) => m.content.replace(CUSTOM_EMOJI_RE, "▪")).join(" · ")}
+            <strong>pinned:</strong> {pinned.map((m) => pinLabel(m)).join(" · ")}
           </span>
           <button
             type="button"
@@ -2690,12 +2697,46 @@ export default function RoomClient({
           }}
         >
           {pinned.map((m) => (
-            <p key={m.id} style={{ fontSize: 13, margin: "3px 0", color: acc }}>
-              <span className="msr" style={{ fontSize: 14, marginRight: 4 }} aria-hidden>
+            // Tapping a pin travels to the message it points at
+            <button
+              key={m.id}
+              type="button"
+              onClick={() => {
+                setPinsOpen(false);
+                scrollToMsg(m.id);
+              }}
+              title="Go to this message"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                width: "100%",
+                padding: "4px 0",
+                background: "transparent",
+                border: "none",
+                textAlign: "left",
+                color: acc,
+                fontSize: 13,
+                cursor: "pointer",
+              }}
+            >
+              <span className="msr" style={{ fontSize: 14 }} aria-hidden>
                 push_pin
               </span>
-              <strong>{m.display_name}:</strong> {m.content.replace(CUSTOM_EMOJI_RE, "▪")}
-            </p>
+              <span style={{ fontWeight: 700, flex: "none" }}>{m.display_name}:</span>
+              {m.kind === "image" || m.kind === "gif" ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={m.content}
+                  alt="Pinned photo"
+                  style={{ height: 36, width: 48, objectFit: "cover", borderRadius: 6, display: "block" }}
+                />
+              ) : (
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
+                  {pinLabel(m)}
+                </span>
+              )}
+            </button>
           ))}
           <button
             type="button"
