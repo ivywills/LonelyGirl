@@ -1,3 +1,29 @@
+/*
+ * Self-hosted fonts — no runtime dependency on fonts.googleapis.com, which
+ * ad/privacy blockers and the native shells can't always reach (icons were
+ * rendering as their ligature names on some devices).
+ *
+ * The icon font is SUBSET to the names the app uses. If you add a new icon
+ * and it shows as text, refetch with the new name appended:
+ *   curl -A "Mozilla/5.0 ... Chrome/126.0" "https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,300..600,0..1,-50..200&icon_names=<comma,separated,names>&display=block"
+ *   then download the woff2 URL it returns over public/fonts/material-symbols-rounded.woff2
+ */
+@font-face {
+  font-family: "Material Symbols Rounded";
+  font-style: normal;
+  font-weight: 300 600;
+  font-display: block;
+  src: url("/fonts/material-symbols-rounded.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Newsreader";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url("/fonts/newsreader.woff2") format("woff2");
+}
+
 :root {
   --bg: #1e1e23;
   --card: #29292f;
