@@ -36,16 +36,16 @@ const QUICK_REACTIONS = ["❤️", "👍", "😂", "😮", "😢", "🔥"];
 /** The burst rail: taps float up the chat edge for everyone, nothing stored. */
 const BURSTS = ["💜", "😂", "😭", "✨", "💅"];
 
-const CONFETTI_COLORS = ["#f2c452", "#db2777", "#7c5cd6", "#0d9488"];
+const CONFETTI_COLORS = ["#f2c452", "#db2777", "#38b6ff", "#0d9488"];
 
 /** Poll option bar fills + their % label colours, by option index. */
 const POLL_FILLS = [
-  "linear-gradient(90deg, #e4d9fb, #cdbcff)",
+  "linear-gradient(90deg, #dbf1ff, #a8dcff)",
   "#f9dcea",
   "#d2efe9",
   "#f6ead0",
 ];
-const POLL_INKS = ["#5b3fb8", "#a81d5b", "#0b6f66", "#8a6d1a"];
+const POLL_INKS = ["#0b6fb8", "#a81d5b", "#0b6f66", "#8a6d1a"];
 
 type JoinRequest = {
   id: string;
@@ -273,7 +273,7 @@ const MOMENT_TYPES: {
     title: (t) => `${t} 🎉`,
     cheer: "🎉 throw confetti",
     confetti: true,
-    grad: "linear-gradient(135deg, #efe9fb, #ffeef6)",
+    grad: "linear-gradient(135deg, #e3f4ff, #ffeef6)",
   },
   {
     key: "welcome",
@@ -283,7 +283,7 @@ const MOMENT_TYPES: {
     title: (n) => `welcome to the room, ${n} 💜`,
     cheer: "👋 say hi",
     confetti: true,
-    grad: "linear-gradient(135deg, #e8f6f1, #f0e9fd)",
+    grad: "linear-gradient(135deg, #e8f6f1, #e3f4ff)",
   },
   {
     key: "announcement",
@@ -293,7 +293,7 @@ const MOMENT_TYPES: {
     title: (t) => `📣 ${t}`,
     cheer: "💜 noted",
     confetti: false,
-    grad: "linear-gradient(135deg, #fff7e0, #f0e9fd)",
+    grad: "linear-gradient(135deg, #fff7e0, #e3f4ff)",
   },
 ];
 
@@ -476,7 +476,7 @@ function PollCard({
         padding: narrow ? "12px 14px 10px" : "13px 16px 11px",
         width: narrow ? "100%" : 400,
         maxWidth: "100%",
-        boxShadow: "0 6px 20px rgba(90,63,184,0.12)",
+        boxShadow: "0 6px 20px rgba(20,116,180,0.12)",
       }}
     >
       <p className="lg-serif" style={{ margin: 0, fontSize: narrow ? 15.5 : 16.5, fontWeight: 600, color: "#2b2733" }}>
@@ -538,7 +538,7 @@ function PollCard({
           </button>
         );
       })}
-      <p style={{ margin: "4px 0 0", fontSize: 11.5, fontWeight: 700, color: "#7c5cd6" }}>
+      <p style={{ margin: "4px 0 0", fontSize: 11.5, fontWeight: 700, color: "#0b6fb8" }}>
         {closed
           ? "poll closed"
           : mine != null
@@ -2131,7 +2131,7 @@ export default function RoomClient({
                 height: size,
                 borderRadius: "50%",
                 background: "var(--card)",
-                border: "1.5px dashed rgba(124,92,214,0.4)",
+                border: "1.5px dashed rgba(20,116,180,0.4)",
                 display: "inline-flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -2163,7 +2163,7 @@ export default function RoomClient({
               padding: tall ? "12px 0" : "8px 0",
               borderRadius: 999,
               background: "var(--accent)",
-              color: "#ffffff",
+              color: "#131316",
               border: "none",
               fontSize: tall ? 13 : 12,
               fontWeight: 700,
@@ -2277,7 +2277,7 @@ export default function RoomClient({
                   padding: "5px 0",
                   borderRadius: 999,
                   background: "var(--accent)",
-                  color: "#ffffff",
+                  color: "#131316",
                   border: "none",
                   fontSize: 11.5,
                   fontWeight: 700,
@@ -2459,10 +2459,10 @@ export default function RoomClient({
                 fontSize: 12.5,
                 fontWeight: 700,
                 background: "var(--accent)",
-                color: "#ffffff",
+                color: "#131316",
                 border: "none",
                 borderRadius: 999,
-                boxShadow: "0 4px 12px rgba(124,92,214,0.35)",
+                boxShadow: "0 4px 12px rgba(20,116,180,0.35)",
                 cursor: "pointer",
                 whiteSpace: "nowrap",
               }}
@@ -2966,14 +2966,14 @@ export default function RoomClient({
                         background: mt.grad,
                         borderRadius: narrow ? 16 : 18,
                         padding: "13px 16px",
-                        boxShadow: "0 6px 20px rgba(90,63,184,0.14)",
+                        boxShadow: "0 6px 20px rgba(20,116,180,0.14)",
                         textAlign: "center",
                         overflow: "hidden",
                       }}
                     >
                       <span aria-hidden style={{ position: "absolute", top: 10, left: 18, width: 6, height: 6, borderRadius: "50%", background: "#f2c452" }} />
                       <span aria-hidden style={{ position: "absolute", top: 22, right: 30, width: 5, height: 5, borderRadius: "50%", background: "#db2777" }} />
-                      <span aria-hidden style={{ position: "absolute", bottom: 14, left: 40, width: 5, height: 5, borderRadius: 2, background: "#7c5cd6", transform: "rotate(24deg)" }} />
+                      <span aria-hidden style={{ position: "absolute", bottom: 14, left: 40, width: 5, height: 5, borderRadius: 2, background: "#38b6ff", transform: "rotate(24deg)" }} />
                       <span aria-hidden style={{ position: "absolute", top: 8, right: 90, width: 4, height: 8, borderRadius: 2, background: "#0d9488", transform: "rotate(-18deg)" }} />
                       <span aria-hidden style={{ position: "absolute", bottom: 20, right: 56, width: 6, height: 6, borderRadius: "50%", background: "#f2c452" }} />
                       <p className="lg-serif" style={{ margin: 0, fontSize: 17, fontWeight: 600, color: "#2b2733" }}>
@@ -3113,9 +3113,9 @@ export default function RoomClient({
                                 background: bare
                                   ? "transparent"
                                   : own
-                                    ? "linear-gradient(135deg, #b39dfb, #9b7df2)"
+                                    ? "linear-gradient(135deg, #8fd3ff, #4fbcff)"
                                     : "var(--bubble)",
-                                color: own ? "#241a3d" : "var(--bubble-ink)",
+                                color: own ? "#0c2c44" : "var(--bubble-ink)",
                                 borderRadius: radius,
                                 padding: bare
                                   ? 0
@@ -3127,7 +3127,7 @@ export default function RoomClient({
                                 boxShadow: bare
                                   ? "none"
                                   : own
-                                    ? "0 3px 10px rgba(124,92,214,0.25)"
+                                    ? "0 3px 10px rgba(20,116,180,0.28)"
                                     : "0 1px 3px var(--chat-shadow)",
                                 fontSize: narrow ? 14 : 14.5,
                                 lineHeight: 1.45,
@@ -4130,9 +4130,9 @@ export default function RoomClient({
                       title={editingMsg ? "Save" : "Send"}
                       style={{
                         ...composerCircle(narrow ? 44 : 38),
-                        background: "linear-gradient(135deg, #8b6cf0, #7c5cd6)",
+                        background: "linear-gradient(135deg, #4dbdff, #1ea5f5)",
                         color: "#ffffff",
-                        boxShadow: "0 4px 12px rgba(124,92,214,0.4)",
+                        boxShadow: "0 4px 12px rgba(20,116,180,0.4)",
                       }}
                     >
                       <span className="msr" style={{ fontSize: narrow ? 21 : 19, lineHeight: 1, display: "block" }} aria-hidden>

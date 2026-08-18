@@ -30,16 +30,16 @@
   --border: #2a2a35;
   --text: #ececf1;
   --muted: #9a9aa8;
-  --accent: #a78bfa;
-  --accent-hover: #8b6cf0;
+  --accent: #38b6ff;
+  --accent-hover: #5fc4ff;
   --error: #f87171;
   --success: #4ade80;
   /* Accent-tinted lifts used by the browse-rooms design. Dark mode has no
      lavender glow to give — plain depth reads better against #1e1e23. */
   --lift: rgba(0, 0, 0, 0.55);
   --lift-soft: rgba(0, 0, 0, 0.35);
-  --accent-tint: rgba(167, 139, 250, 0.16);
-  --accent-tint-text: #cdbcff;
+  --accent-tint: rgba(56, 182, 255, 0.16);
+  --accent-tint-text: #a8dcff;
 }
 
 /* Light mode — toggled from the settings gear, persisted in localStorage */
@@ -49,14 +49,14 @@
   --border: #ddd6cb;
   --text: #2b2733;
   --muted: #756e82;
-  --accent: #7c5cd6;
-  --accent-hover: #6a4bc4;
+  --accent: #38b6ff;
+  --accent-hover: #1ea5f5;
   --error: #c92a2a;
   --success: #157347;
-  --lift: rgba(90, 63, 184, 0.17);
-  --lift-soft: rgba(90, 63, 184, 0.08);
-  --accent-tint: #efe9fb;
-  --accent-tint-text: #5b3fb8;
+  --lift: rgba(20, 116, 180, 0.17);
+  --lift-soft: rgba(20, 116, 180, 0.08);
+  --accent-tint: #e3f4ff;
+  --accent-tint-text: #0b6fb8;
 }
 
 /*
@@ -148,7 +148,7 @@
   --bubble-soft: rgba(255, 255, 255, 0.08);
   --chat-veil: rgba(0, 0, 0, 0.25);
   --chat-veil-soft: rgba(0, 0, 0, 0.15);
-  --chat-hairline: rgba(167, 139, 250, 0.18);
+  --chat-hairline: rgba(56, 182, 255, 0.18);
   --chat-shadow: rgba(0, 0, 0, 0.4);
 }
 
@@ -166,8 +166,8 @@
   --bubble-soft: #f4effc;
   --chat-veil: rgba(255, 255, 255, 0.6);
   --chat-veil-soft: rgba(255, 255, 255, 0.35);
-  --chat-hairline: rgba(124, 92, 214, 0.12);
-  --chat-shadow: rgba(90, 63, 184, 0.12);
+  --chat-hairline: rgba(20, 116, 180, 0.14);
+  --chat-shadow: rgba(20, 116, 180, 0.12);
 }
 
 /* Form elements sitting on a room-coloured surface (create/settings forms) */
@@ -195,9 +195,7 @@
 }
 
 /* The light accent is deeper, so primary buttons read better with white text */
-:root[data-theme="light"] button.primary {
-  color: #ffffff;
-}
+/* The blue accent is bright — the base dark ink stays legible in both themes */
 
 * {
   box-sizing: border-box;
@@ -453,7 +451,7 @@ a:hover {
 
 .tv-btn:hover .tv-screen,
 .tv-btn:focus-visible .tv-screen {
-  box-shadow: 0 0 26px 6px var(--glow, rgba(167, 139, 250, 0.5));
+  box-shadow: 0 0 26px 6px var(--glow, rgba(56, 182, 255, 0.5));
 }
 
 .tv-btn:hover .tv-screen canvas,
@@ -482,10 +480,6 @@ a:hover {
 .shop-buy:hover {
   background: var(--accent-hover);
   text-decoration: none;
-}
-
-:root[data-theme="light"] .shop-buy {
-  color: #ffffff;
 }
 
 .chat-shell {
@@ -753,10 +747,6 @@ body {
   border: none;
   cursor: pointer;
   transition: background 0.2s;
-}
-
-:root[data-theme="light"] .lg-cta {
-  color: #ffffff;
 }
 
 .lg-cta:hover {
@@ -1391,11 +1381,11 @@ body {
 }
 
 .lg-dock-room.active {
-  background: linear-gradient(140deg, #b39dfb, #8b6cf0);
+  background: linear-gradient(140deg, #7ccdff, #1ea5f5);
   color: #ffffff;
   opacity: 1;
-  box-shadow: 0 0 0 3px var(--card), 0 0 0 5.5px #8b6cf0,
-    0 6px 16px rgba(124, 92, 214, 0.35);
+  box-shadow: 0 0 0 3px var(--card), 0 0 0 5.5px #1ea5f5,
+    0 6px 16px rgba(20, 116, 180, 0.35);
 }
 
 /* Full-height room page (no global topbar above it) */
@@ -1512,7 +1502,7 @@ body {
 
 .lg-roomlife-grip:hover,
 .lg-roomlife-grip.active {
-  background: linear-gradient(to right, rgba(124, 92, 214, 0.3), transparent);
+  background: linear-gradient(to right, rgba(56, 182, 255, 0.35), transparent);
 }
 
 @media (min-width: 1080px) {

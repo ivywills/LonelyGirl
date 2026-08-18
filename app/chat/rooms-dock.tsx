@@ -39,7 +39,7 @@ export default function RoomsDock({ rooms }: { rooms: SidebarRoom[] }) {
       </Link>
       <span
         aria-hidden
-        style={{ width: 30, flex: "none", borderTop: "1px dashed rgba(124,92,214,0.4)" }}
+        style={{ width: 30, flex: "none", borderTop: "1px dashed rgba(20,116,180,0.4)" }}
       />
       {rooms.map((r) => {
         const active = pathname === `/chat/${r.id}`;
@@ -83,7 +83,7 @@ export default function RoomsDock({ rooms }: { rooms: SidebarRoom[] }) {
           flex: "none",
           marginTop: "auto",
           borderRadius: "50%",
-          border: "1.5px dashed rgba(124,92,214,0.4)",
+          border: "1.5px dashed rgba(20,116,180,0.4)",
           color: "var(--accent)",
           display: "inline-flex",
           alignItems: "center",
