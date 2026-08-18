@@ -187,7 +187,9 @@ export default function ChannelLounge({
                     </p>
                   )}
 
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "14px 0 0" }}>
+                  {/* Everything from here down sticks to the card's bottom edge
+                      as a group — the flexible gap sits above the members row */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: "auto", paddingTop: 14 }}>
                     <div style={{ display: "flex" }}>
                       {members.slice(0, 5).map((m, i) => (
                         <div
@@ -227,17 +229,18 @@ export default function ChannelLounge({
                     </p>
                   )}
 
-                  <button
-                    className="primary"
-                    type="button"
-                    style={{ marginTop: 16 }}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      router.push(`/chat/${room.id}`);
-                    }}
-                  >
-                    {joined ? "Enter the room" : room.is_private ? "Request to join" : "Join the room"}
-                  </button>
+                  <div style={{ paddingTop: 16 }}>
+                    <button
+                      className="primary"
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        router.push(`/chat/${room.id}`);
+                      }}
+                    >
+                      {joined ? "Enter the room" : room.is_private ? "Request to join" : "Join the room"}
+                    </button>
+                  </div>
                 </div>
               </div>
             );
