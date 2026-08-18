@@ -29,18 +29,18 @@ export default async function EventsPage() {
   const ids = (events ?? []).map((e) => e.id);
 
   /*
-   * Signed in: the real attendee rows, so "Booked" and the names resolve.
+   * Signed in: the real attendee rows, so "your plans" and the names resolve.
    * Signed out: head counts only, via a security-definer function — who is
    * going to an event is not public. The counts are padded into anonymous
-   * placeholder rows so the card's "N going" and "Full" logic is unchanged;
+   * placeholder rows so the row's "N going" and "full" logic is unchanged;
    * they carry no user_id, so nothing renders as a person.
    */
-  let attendees: { event_id: string; user_id: string; display_name: string }[] = [];
+  let attendees: { event_id: string; user_id: string; display_name: string; plus_ones: number }[] = [];
   if (ids.length) {
     if (user) {
       const { data } = await supabase
         .from("event_attendees")
-        .select("event_id, user_id, display_name")
+        .select("event_id, user_id, display_name, plus_ones")
         .in("event_id", ids);
       attendees = data ?? [];
     } else {
@@ -52,10 +52,43 @@ export default async function EventsPage() {
                 event_id: row.event_id,
                 user_id: "",
                 display_name: "",
+                plus_ones: 0,
               }))
             : []
       );
     }
+  }
+
+  // Hype-meter counts are public (security-definer, like the head counts);
+  // who reacted is not — signed-in users read only their own rows.
+  const reactionCounts: Record<string, Record<string, number>> = {};
+  if (ids.length) {
+    const { data } = await supabase.rpc("event_reaction_counts");
+    (data ?? []).forEach((r: { event_id: string; kind: string; reactions: number }) => {
+      if (!ids.includes(r.event_id)) return;
+      (reactionCounts[r.event_id] ??= {})[r.kind] = Number(r.reactions);
+    });
+  }
+
+  let myReactions: string[] = [];
+  let waitlist: { event_id: string; user_id: string; created_at: string }[] = [];
+  let saves: string[] = [];
+  let reminders: string[] = [];
+  if (user && ids.length) {
+    const [mr, wl, sv, rm] = await Promise.all([
+      supabase.from("event_reactions").select("event_id, kind").in("event_id", ids),
+      supabase
+        .from("event_waitlist")
+        .select("event_id, user_id, created_at")
+        .in("event_id", ids)
+        .order("created_at", { ascending: true }),
+      supabase.from("event_saves").select("event_id").in("event_id", ids),
+      supabase.from("event_reminders").select("event_id").in("event_id", ids),
+    ]);
+    myReactions = (mr.data ?? []).map((r) => `${r.event_id}:${r.kind}`);
+    waitlist = wl.data ?? [];
+    saves = (sv.data ?? []).map((r) => r.event_id);
+    reminders = (rm.data ?? []).map((r) => r.event_id);
   }
 
   const displayName = user
@@ -69,6 +102,11 @@ export default async function EventsPage() {
     <EventsClient
       events={events ?? []}
       initialAttendees={attendees}
+      initialWaitlist={waitlist}
+      initialReactionCounts={reactionCounts}
+      initialMyReactions={myReactions}
+      initialSaves={saves}
+      initialReminders={reminders}
       userId={user?.id ?? null}
       displayName={displayName}
       isAdmin={!!adminRow}

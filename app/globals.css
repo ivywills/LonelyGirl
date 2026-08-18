@@ -4,8 +4,10 @@
  * rendering as their ligature names on some devices).
  *
  * The icon font is SUBSET to every icon name found in app/ (all string
- * tokens intersected with fonts.google.com/metadata/icons, so tuple arrays
- * and JSX children are covered alike). If a new icon renders as text,
+ * tokens intersected with fonts.google.com/metadata/icons?key=material_symbols&incomplete=1
+ * — the bare /metadata/icons list is classic-only and silently drops newer
+ * names like calendar_add_on — so tuple arrays and JSX children are covered
+ * alike). If a new icon renders as text,
  * refetch with the new name added:
  *   curl -A "Mozilla/5.0 ... Chrome/126.0" "https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,300..600,0..1,-50..200&icon_names=<comma,separated,names>&display=block"
  *   then download the woff2 URL it returns over public/fonts/material-symbols-rounded.woff2
@@ -1728,5 +1730,36 @@ body {
 
   .wl-card h1 {
     font-size: 29px;
+  }
+}
+
+/*
+ * Events planner redesign. Butter yellow is the page's one new token — active
+ * toggles, today highlights, hype-bar fill, status pills. Always worn with
+ * dark ink and a soft ink border, never as a primary CTA (those stay accent).
+ */
+:root {
+  --butter: #fffcbb;
+}
+
+/* Agenda rows lift on hover; the whole card is the tap target for the popup */
+.lg-ev-row {
+  transition: transform 0.16s ease, box-shadow 0.16s ease;
+}
+
+.lg-ev-row:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 24px rgba(20, 116, 180, 0.13);
+}
+
+/* The event detail pop-up card's entry: fade + rise + settle */
+@keyframes lg-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
   }
 }
