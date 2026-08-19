@@ -27,10 +27,10 @@ async function uploadAvatar(userId: string, file: File): Promise<string> {
   const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
   if (["heic", "heif"].includes(ext) || /hei[cf]/i.test(file.type)) {
     throw new Error(
-      "iPhone HEIC photos can't be shown in most browsers — pick a JPG or PNG, or screenshot the photo and upload that."
+      "iPhone HEIC photos can't be shown in most browsers. Pick a JPG or PNG, or screenshot the photo and upload that."
     );
   }
-  if (file.size > 5 * 1024 * 1024) throw new Error("That image is over 5MB — try a smaller one.");
+  if (file.size > 5 * 1024 * 1024) throw new Error("That image is over 5MB. Try a smaller one.");
   const path = `${userId}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9_.-]/g, "_")}`;
   const { error } = await supabase.storage.from("avatars").upload(path, file, {
     contentType: file.type || "image/jpeg",
@@ -263,7 +263,7 @@ export default function Onboarding({
           {step === 0 && (
             <>
               <div style={{ fontSize: 40, marginBottom: 10 }} aria-hidden>💌</div>
-              <StepTitle sub="A few quick things so the girls you meet know who you are. Most of it's optional — skip anything you'd rather not say.">
+              <StepTitle sub="A few quick things so the girls you meet know who you are. Most of it's optional, so skip anything you'd rather not say.">
                 Let&rsquo;s set up your profile
               </StepTitle>
             </>
@@ -412,7 +412,7 @@ export default function Onboarding({
 
           {step === 7 && (
             <>
-              <StepTitle sub="Totally optional, and only ever visible to you. It never shows on your profile — it just helps us understand who's here.">
+              <StepTitle sub="Totally optional, and only ever visible to you. It never shows on your profile; it just helps us understand who's here.">
                 Anything you&rsquo;re going through?
               </StepTitle>
               <SearchableChips

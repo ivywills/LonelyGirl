@@ -647,13 +647,13 @@ export default function EventsClient({
 
   const emptyLine = (() => {
     if (selectedDay && sections.length === 0)
-      return `nothing on ${dayName(new Date(`${selectedDay}T12:00`))} — a rest day.`;
+      return `nothing on ${dayName(new Date(`${selectedDay}T12:00`))}. a rest day.`;
     if (view === "month" && sections.length === 0)
-      return `nothing in ${calMonth.toLocaleDateString([], { month: "long" }).toLowerCase()} — flip ahead.`;
+      return `nothing in ${calMonth.toLocaleDateString([], { month: "long" }).toLowerCase()}. flip ahead.`;
     return {
-      upcoming: "nothing coming up — check back soon.",
-      booked: "no plans yet — that's what this page is for.",
-      saved: "nothing saved yet — tap the bookmark on anything tempting.",
+      upcoming: "nothing coming up. check back soon.",
+      booked: "no plans yet, that's what this page is for.",
+      saved: "nothing saved yet. tap the bookmark on anything tempting.",
       past: "no past events yet.",
     }[scope];
   })();
@@ -879,7 +879,7 @@ export default function EventsClient({
               onChange={(e) => setDescription(e.target.value)}
               maxLength={500}
               rows={3}
-              placeholder="A line or two — keep it warm"
+              placeholder="A line or two, keep it warm"
               style={{ ...fieldStyle, resize: "vertical" }}
             />
             <div
@@ -940,7 +940,7 @@ export default function EventsClient({
               imageUrl={imageUrl}
               uploading={uploading}
               title="add an event photo"
-              hint="events with a picture get way more bookings — tap to choose one"
+              hint="events with a picture get way more bookings. tap to choose one"
               onFile={async (file) => {
                 setUploading(true);
                 setError("");
@@ -1141,7 +1141,7 @@ export default function EventsClient({
                     type="button"
                     onClick={() => setSelectedDay(isSel ? null : k)}
                     aria-pressed={isSel}
-                    aria-label={`${dayName(d)} — ${evs.length} event${evs.length === 1 ? "" : "s"}`}
+                    aria-label={`${dayName(d)}: ${evs.length} event${evs.length === 1 ? "" : "s"}`}
                     style={{
                       flex: 1,
                       minWidth: 46,
@@ -1217,7 +1217,7 @@ export default function EventsClient({
                       type="button"
                       onClick={() => setSelectedDay(isSel ? null : k)}
                       aria-pressed={isSel}
-                      aria-label={`${day} — ${evs.length} event${evs.length === 1 ? "" : "s"}`}
+                      aria-label={`${day}: ${evs.length} event${evs.length === 1 ? "" : "s"}`}
                       style={{
                         padding: "6px 3px 5px",
                         minHeight: 60,
@@ -1542,8 +1542,8 @@ export default function EventsClient({
                           ev.stopPropagation();
                           toggleSave(e.id);
                         }}
-                        aria-label={saves.has(e.id) ? "Saved — tap to unsave" : "Save for later"}
-                        title={saves.has(e.id) ? "Saved — tap to unsave" : "Save for later"}
+                        aria-label={saves.has(e.id) ? "Saved. Tap to unsave" : "Save for later"}
+                        title={saves.has(e.id) ? "Saved. Tap to unsave" : "Save for later"}
                         style={{
                           width: 28,
                           height: 28,
@@ -1949,7 +1949,7 @@ export default function EventsClient({
                         <span style={{ fontSize: 12.5, color: "var(--muted)" }}>
                           {st.going > 0
                             ? `${st.going} going`
-                            : "no one yet — be the first"}
+                            : "no one yet, be the first"}
                         </span>
                       )}
                     </div>
@@ -1966,7 +1966,7 @@ export default function EventsClient({
                         padding: "9px 13px",
                       }}
                     >
-                      you&apos;re #{st.pos + 1} in line — if a spot opens, it&apos;s yours.
+                      you&apos;re #{st.pos + 1} in line. if a spot opens, it&apos;s yours.
                     </p>
                   )}
                 </div>

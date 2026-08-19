@@ -59,7 +59,7 @@ export default function ShopClient({
           </span>
           <p style={{ fontWeight: 600, fontSize: 15, marginTop: 10 }}>This channel is warming up.</p>
           <p style={{ color: "var(--muted)", fontSize: 14, marginTop: 6 }}>
-            Small-batch merch is on its way — check back soon.
+            Small-batch merch is on its way. Check back soon.
           </p>
         </main>
       </div>
@@ -92,7 +92,7 @@ export default function ShopClient({
             <span className="msr" style={{ fontSize: 16 }} aria-hidden>
               podcasts
             </span>
-            This channel is still warming up — previews below, checkout opens soon.
+            This channel is still warming up. Previews below, checkout opens soon.
           </div>
         )}
 

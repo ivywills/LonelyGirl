@@ -9,7 +9,7 @@ export default function DeleteAccountButton() {
   async function handleClick() {
     if (
       !confirm(
-        "Delete your account? Your profile, messages, and uploads are removed for good — there's no undo."
+        "Delete your account? Your profile, messages, and uploads are removed for good. There's no undo."
       )
     )
       return;

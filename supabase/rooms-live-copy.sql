@@ -22,15 +22,15 @@
 -- Room 1 — intros / general
 update public.chat_rooms set
   name = 'Say Hi',
-  description = $$the first hello room. introduce yourself when you're ready — no rush, reading along counts too.$$,
+  description = $$the first hello room. introduce yourself when you're ready. no rush, reading along counts too.$$,
   tags = '{newhere,introductions,nopressure}',
-  welcome_message = $$welcome to Say Hi — introduce yourself when you're ready, no rush.$$
+  welcome_message = $$welcome to Say Hi. introduce yourself when you're ready, no rush.$$
 where id = 'ac75c98b-fbe2-4d82-9590-10ec57f749d9';
 
 -- Room 2 — shy / nervous
 update public.chat_rooms set
   name = 'Shy Girls Welcome',
-  description = $$for the quiet ones, the overthinkers, the ones who type a message and delete it. come be nervous together — talking optional.$$,
+  description = $$for the quiet ones, the overthinkers, the ones who type a message and delete it. come be nervous together. talking optional.$$,
   tags = '{shy,anxiety,quietones}',
-  welcome_message = $$welcome to Shy Girls Welcome — talking optional.$$
+  welcome_message = $$welcome to Shy Girls Welcome. talking optional.$$
 where id = 'b82390c0-51ec-4fce-a551-bc38ce636d82';

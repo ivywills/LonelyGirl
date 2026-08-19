@@ -269,7 +269,7 @@ export default function EditProfile({ profile }: { profile: OwnProfile }) {
             />
           </Section>
 
-          <Section label="Going through" hint="Only you can see this — it never appears on your profile card.">
+          <Section label="Going through" hint="Only you can see this. It never appears on your profile card.">
             <SearchableChips
               options={STRUGGLES}
               selected={struggles}

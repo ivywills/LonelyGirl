@@ -252,7 +252,7 @@ async function uploadCustomEmoji(
     throw new Error("Custom emoji must be an image.");
   }
   if (file.size > 1024 * 1024) {
-    throw new Error("That image is over 1MB — try a smaller one.");
+    throw new Error("That image is over 1MB. Try a smaller one.");
   }
   const path = `${userId}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9_.-]/g, "_")}`;
   const { error } = await supabase.storage.from("custom-emojis").upload(path, file, {
@@ -425,7 +425,7 @@ function PollCard({
             key={i}
             type="button"
             onClick={() => !closed && onVote(poll, i)}
-            aria-label={`Vote ${opt} — ${pct}%${mine === i ? ", your vote" : ""}`}
+            aria-label={`Vote ${opt}: ${pct}%${mine === i ? ", your vote" : ""}`}
             disabled={closed}
             style={{
               display: "block",
@@ -1453,7 +1453,7 @@ export default function RoomClient({
       trackRef.current = { ...trackRef.current, muted: false };
       channelRef.current?.track(trackRef.current);
     } catch {
-      setNotice("Mic blocked — allow the microphone for this site, then tap 🎧 to retry.");
+      setNotice("Mic blocked. Allow the microphone for this site, then tap 🎧 to retry.");
     }
   }
 
@@ -2119,7 +2119,7 @@ export default function RoomClient({
             <button
               type="button"
               onClick={() => (micStreamRef.current ? toggleMute() : acquireMic())}
-              title={!micStreamRef.current ? "You're listen-only — tap to turn your mic on" : undefined}
+              title={!micStreamRef.current ? "You're listen-only. Tap to turn your mic on" : undefined}
               style={{
                 flex: 1,
                 width: "auto",
@@ -2206,7 +2206,7 @@ export default function RoomClient({
                 }}
               >
                 {r.display_name}
-                {r.note ? ` — “${r.note}”` : ""}
+                {r.note ? `: “${r.note}”` : ""}
               </span>
             </div>
             <div style={{ display: "flex", gap: 6 }}>
@@ -2263,7 +2263,7 @@ export default function RoomClient({
     <button
       type="button"
       onClick={() => setSheetOpen(true)}
-      aria-label={`Voice chat — see who's here and hop on the couch${voiceCount > 0 ? ` (${voiceCount} on voice)` : ""}`}
+      aria-label={`Voice chat: see who's here and hop on the couch${voiceCount > 0 ? ` (${voiceCount} on voice)` : ""}`}
       style={{
         width: "auto",
         minHeight: 44,
@@ -2832,7 +2832,7 @@ export default function RoomClient({
               {myRequest.status === "denied" && "Your request wasn't accepted this time."}
               {myRequest.status === "approved" && (
                 <button className="primary" onClick={join}>
-                  You&apos;re in — enter the room
+                  You&apos;re in. Enter the room
                 </button>
               )}
             </p>
@@ -2979,7 +2979,7 @@ export default function RoomClient({
                       >
                         <span style={{ whiteSpace: "nowrap" }}>
                           {mt.cheer}
-                          {c.count > 0 ? ` — ${c.count}` : ""}
+                          {c.count > 0 ? ` (${c.count})` : ""}
                         </span>
                       </button>
                     </div>
@@ -4049,7 +4049,7 @@ export default function RoomClient({
                           }}
                           aria-hidden
                         />
-                        recording… {recSecs}s — release to send
+                        recording… {recSecs}s, release to send
                       </span>
                     ) : (
                       <input
@@ -4126,7 +4126,7 @@ export default function RoomClient({
                 setPanelW(232);
                 localStorage.setItem("lg-roomlife-w", "232");
               }}
-              title="Drag to resize — double-click to reset"
+              title="Drag to resize. Double-click to reset"
               role="separator"
               aria-orientation="vertical"
               aria-label="Resize the room-life panel"

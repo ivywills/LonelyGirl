@@ -248,7 +248,7 @@ function Tv({
     <div
       role="button"
       tabIndex={0}
-      aria-label="Old television — sign up or log in"
+      aria-label="Old television: sign up or log in"
       onClick={onClick}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {

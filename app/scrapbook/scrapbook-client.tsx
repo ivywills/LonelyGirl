@@ -32,11 +32,11 @@ async function uploadScrapbookImage(
   const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
   if (["heic", "heif"].includes(ext) || /hei[cf]/i.test(file.type)) {
     throw new Error(
-      "iPhone HEIC photos can't be shown in most browsers — pick a JPG or PNG, or screenshot the photo and upload that."
+      "iPhone HEIC photos can't be shown in most browsers. Pick a JPG or PNG, or screenshot the photo and upload that."
     );
   }
   if (file.size > 5 * 1024 * 1024) {
-    throw new Error("That image is over 5MB — try a smaller one.");
+    throw new Error("That image is over 5MB. Try a smaller one.");
   }
   const path = `${userId}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9_.-]/g, "_")}`;
   const { error } = await supabase.storage.from("scrapbook-images").upload(path, file, {
@@ -96,7 +96,7 @@ export default function ScrapbookClient({
   async function pin() {
     if (!userId) return;
     if (!caption.trim() && !imageUrl) {
-      setError("Add a photo or a few words — otherwise there's nothing to pin.");
+      setError("Add a photo or a few words, otherwise there's nothing to pin.");
       return;
     }
     setSaving(true);
@@ -178,7 +178,7 @@ export default function ScrapbookClient({
             uploading={uploading}
             onFile={handleFile}
             title="Add a photo"
-            hint="Tap to choose a picture — or skip it and just leave a note"
+            hint="Tap to choose a picture, or skip it and just leave a note"
           />
           <textarea
             value={caption}

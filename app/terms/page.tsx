@@ -1,7 +1,7 @@
 import Link from "next/link";
 import PageHeader from "@/app/page-header";
 
-export const metadata = { title: "Terms of Use — LonelyGirl" };
+export const metadata = { title: "Terms of Use · LonelyGirl" };
 
 export default function TermsPage() {
   return (
@@ -11,7 +11,7 @@ export default function TermsPage() {
         <p className="lg-legal-date">Last updated August 15, 2026</p>
 
         <p>
-          LonelyGirl is a small community — chat rooms, playlists, events, and a
+          LonelyGirl is a small community: chat rooms, playlists, events, and a
           shop. Using it means you agree to these terms.
         </p>
 
@@ -26,11 +26,11 @@ export default function TermsPage() {
         <h2>Community rules</h2>
         <p>
           This is a shared space. There is no tolerance for objectionable content
-          or abusive behaviour — that includes harassment, hate, threats, sexual
+          or abusive behaviour. That includes harassment, hate, threats, sexual
           content involving minors, impersonation, spam, and anything illegal.
         </p>
         <p>
-          Every message can be reported, and every user can be blocked — open
+          Every message can be reported, and every user can be blocked, so open
           someone&apos;s profile to do either. Reports are reviewed promptly,
           normally within 24 hours. Content that breaks these rules gets removed,
           and accounts that post it get banned.

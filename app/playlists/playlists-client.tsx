@@ -425,7 +425,7 @@ export default function PlaylistsClient({
               els.current[pl.id] = { ...els.current[pl.id], wrap: el };
             }}
             onClick={() => setSelectedId(pl.id)}
-            aria-label={`${pl.title} — ${songs(pl.song_count)} by ${pl.creator_name || "someone"}`}
+            aria-label={`${pl.title}: ${songs(pl.song_count)} by ${pl.creator_name || "someone"}`}
             style={{
               position: "absolute",
               left: 0,
@@ -578,7 +578,7 @@ export default function PlaylistsClient({
         </button>
         {playlists.length === 0 && (
           <p style={{ fontSize: 13, color: "var(--muted)" }}>
-            Nothing on the wall yet — drop the first record.
+            Nothing on the wall yet. Drop the first record.
           </p>
         )}
       </div>

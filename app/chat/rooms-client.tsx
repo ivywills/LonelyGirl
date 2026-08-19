@@ -104,11 +104,11 @@ export async function uploadRoomImage(
   const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
   if (["heic", "heif"].includes(ext) || /hei[cf]/i.test(file.type)) {
     throw new Error(
-      "iPhone HEIC photos can't be shown in most browsers — pick a JPG or PNG, or screenshot the photo and upload that."
+      "iPhone HEIC photos can't be shown in most browsers. Pick a JPG or PNG, or screenshot the photo and upload that."
     );
   }
   if (file.size > 5 * 1024 * 1024) {
-    throw new Error("That image is over 5MB — try a smaller one.");
+    throw new Error("That image is over 5MB. Try a smaller one.");
   }
   const path = `${userId}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9_.-]/g, "_")}`;
   const { error } = await supabase.storage.from("room-images").upload(path, file, {
@@ -222,7 +222,7 @@ export function ImagePicker({
   uploading,
   onFile,
   title = "Add a room photo",
-  hint = "Rooms with a picture get way more visitors — tap to choose one",
+  hint = "Rooms with a picture get way more visitors. Tap to choose one",
 }: {
   id: string;
   imageUrl: string;
@@ -266,7 +266,7 @@ export function ImagePicker({
               style={{ width: "100%", height: 130, objectFit: "cover", borderRadius: 8, display: "block" }}
             />
             <span style={{ fontSize: 12, display: "block", marginTop: 6 }}>
-              {uploading ? "Uploading…" : "Looking good — tap to change it"}
+              {uploading ? "Uploading…" : "Looking good. Tap to change it"}
             </span>
           </>
         ) : (
@@ -786,7 +786,7 @@ export default function ChatDirectory({
   async function deleteSection(s: Section) {
     const count = rooms.filter((r) => r.section_id === s.id).length;
     const warning = count
-      ? ` Its ${count} room${count === 1 ? "" : "s"} stay — ${count === 1 ? "it moves" : "they move"} down to "More rooms".`
+      ? ` Its ${count} room${count === 1 ? "" : "s"} stay, ${count === 1 ? "it moves" : "they move"} down to "More rooms".`
       : "";
     if (!confirm(`Delete the "${s.name}" section?${warning}`)) return;
     setError("");
@@ -812,7 +812,7 @@ export default function ChatDirectory({
   async function setHidden(r: Room, hidden: boolean) {
     if (
       hidden &&
-      !confirm(`Hide "${r.name}"? It disappears for everyone except admins — you can bring it back from the archive at the bottom of this page.`)
+      !confirm(`Hide "${r.name}"? It disappears for everyone except admins. You can bring it back from the archive at the bottom of this page.`)
     )
       return;
     setError("");
@@ -837,7 +837,7 @@ export default function ChatDirectory({
     const count = rooms.filter((r) => r.section_id === s.id && !r.hidden_at).length;
     if (
       !confirm(
-        `Archive "${s.name}"${count ? ` and its ${count} room${count === 1 ? "" : "s"}` : ""}? It all disappears for everyone except admins — restore it from the archive at the bottom of this page.`
+        `Archive "${s.name}"${count ? ` and its ${count} room${count === 1 ? "" : "s"}` : ""}? It all disappears for everyone except admins. Restore it from the archive at the bottom of this page.`
       )
     )
       return;
@@ -1005,7 +1005,7 @@ export default function ChatDirectory({
               className="lg-filter-btn"
               onClick={() => setShowScope((v) => !v)}
               aria-expanded={showScope}
-              aria-label={scope === "all" ? "Filter rooms" : `Filter rooms — showing ${SCOPE_LABELS[scope] ?? scope}`}
+              aria-label={scope === "all" ? "Filter rooms" : `Filter rooms: showing ${SCOPE_LABELS[scope] ?? scope}`}
               title="Filter rooms"
             >
               <span className="msr" style={{ fontSize: 18 }} aria-hidden>
@@ -1124,7 +1124,7 @@ export default function ChatDirectory({
                   fontFamily: "inherit",
                 }}
               >
-                <option value="">No section — show under “More rooms”</option>
+                <option value="">No section (shows under “More rooms”)</option>
                 {[...liveSections]
                   .sort((a, b) => a.sort_order - b.sort_order)
                   .map((s) => (
@@ -1133,7 +1133,7 @@ export default function ChatDirectory({
                     </option>
                   ))}
               </select>
-              <label>Tags (comma separated — these are what the mood chips match)</label>
+              <label>Tags (comma separated, and what the mood chips match)</label>
               <input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="anxiety, calm, late-night" />
               <label>Room picture</label>
               <ImagePicker
@@ -1181,7 +1181,7 @@ export default function ChatDirectory({
                   onChange={(e) => setIsPrivate(e.target.checked)}
                   style={{ width: "auto", margin: 0 }}
                 />
-                Private — people must request to join
+                Private: people must request to join
               </label>
               <button className="primary" disabled={busy || uploading} type="submit">
                 {busy ? "Creating…" : uploading ? "Waiting for upload…" : "Create room"}
@@ -1447,7 +1447,7 @@ export default function ChatDirectory({
                 })}
                 {rail.rooms.length === 0 && (
                   <p style={{ fontSize: 13, color: "var(--muted)", padding: "18px 2px" }}>
-                    Nothing in here yet — use + to add the first room.
+                    Nothing in here yet. Use + to add the first room.
                   </p>
                 )}
               </div>
@@ -1460,7 +1460,7 @@ export default function ChatDirectory({
             {searching
               ? "Searching all rooms…"
               : filtering
-                ? "No rooms match that — try another feeling, or clear the search."
+                ? "No rooms match that. Try another feeling, or clear the search."
                 : "No rooms yet."}
           </p>
         )}
@@ -1506,7 +1506,7 @@ export default function ChatDirectory({
               </h3>
             </div>
             <p style={{ margin: "2px 0 14px 29px", fontSize: 13, color: "var(--muted)" }}>
-              hidden from everyone but admins — restore to put something back
+              hidden from everyone but admins. restore to put something back
             </p>
             <div style={{ display: "flex", flexDirection: "column" }}>
               {sections

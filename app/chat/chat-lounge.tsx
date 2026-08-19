@@ -244,7 +244,7 @@ export default function ChannelLounge({
         </div>
 
         <p style={{ fontSize: 13, color: "var(--muted)", textAlign: "center", marginTop: 26 }}>
-          Come say hi — everyone&apos;s in one of these two. More rooms on the way.
+          Come say hi. Everyone&apos;s in one of these two. More rooms on the way.
         </p>
       </main>
     </>

@@ -121,7 +121,7 @@ export default function ModerationClient() {
               <span style={{ color: "var(--muted)", fontSize: 12 }}> (banned)</span>
             )}
             <span style={{ color: "var(--muted)" }}>
-              {" — reported by "}
+              {" · reported by "}
               {nameOf(r.reporter_id)},{" "}
               {new Date(r.created_at).toLocaleDateString([], { day: "numeric", month: "short" })}
             </span>

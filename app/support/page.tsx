@@ -1,7 +1,7 @@
 import Link from "next/link";
 import PageHeader from "@/app/page-header";
 
-export const metadata = { title: "Support — LonelyGirl" };
+export const metadata = { title: "Support · LonelyGirl" };
 
 export default function SupportPage() {
   return (

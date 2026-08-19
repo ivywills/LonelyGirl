@@ -8,10 +8,10 @@ import WaitlistForm from "@/app/waitlist/waitlist-form";
  */
 
 const BLURB =
-  "A small, women-only community in Toronto. Chat rooms open at any hour, and things to turn up to — film nights, book clubs, long walks, dinners.";
+  "A small, women-only community in Toronto. Chat rooms open at any hour, and things to turn up to: film nights, book clubs, long walks, dinners.";
 
 export const metadata: Metadata = {
-  title: "LonelyGirl — join the waitlist",
+  title: "LonelyGirl: join the waitlist",
   description: BLURB,
   openGraph: {
     title: "Somewhere to gather when you're feeling alone.",
@@ -33,7 +33,7 @@ export default async function WaitlistPage({
   return (
     <main className="wl-sky">
       <div className="wl-card">
-        <p className="wl-eyebrow">LonelyGirl — Toronto</p>
+        <p className="wl-eyebrow">LonelyGirl, Toronto</p>
 
         <h1 className="lg-serif">
           Somewhere to gather when you&rsquo;re feeling alone.

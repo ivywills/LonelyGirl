@@ -110,7 +110,7 @@ export async function deleteAccount() {
 
   const { error } = await supabase.rpc("delete_user_account");
   if (error) {
-    redirect("/account?error=" + encodeURIComponent("Couldn't delete the account — try again."));
+    redirect("/account?error=" + encodeURIComponent("Couldn't delete the account. Try again."));
   }
 
   await supabase.auth.signOut();

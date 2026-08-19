@@ -222,7 +222,7 @@ export function ProfileSheet({ userId, onClose }: { userId: string; onClose: () 
       reported_user_id: userId,
       reason: reason.trim().slice(0, 500),
     });
-    setNote(error ? "Couldn't send that report — try again." : "Report sent. An admin will take a look.");
+    setNote(error ? "Couldn't send that report. Try again." : "Report sent. An admin will take a look.");
   }
 
   async function toggleBlock() {

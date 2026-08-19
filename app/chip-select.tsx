@@ -112,7 +112,7 @@ export default function SearchableChips({
       </div>
       {q && matchCount === 0 && (
         <p style={{ fontSize: 13, color: T.faint, margin: "10px 0 0" }}>
-          Nothing matches that — try a shorter search.
+          Nothing matches that. Try a shorter search.
         </p>
       )}
     </>
