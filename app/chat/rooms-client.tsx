@@ -64,12 +64,12 @@ type JoinRequest = {
  * mode and the deep tone in dark.
  */
 export const MOODS: { label: string; icon: string; color: string; tags: string[] }[] = [
-  { label: "anxious", icon: "waves", color: "#7c3aed", tags: ["anxiety", "anxious", "calm", "grounding", "panic"] },
-  { label: "lonely", icon: "favorite", color: "#e11d48", tags: ["lonely", "loneliness", "connection", "friendship"] },
+  { label: "anxious", icon: "waves", color: "#7c3aed", tags: ["anxiety", "anxious", "calm", "grounding", "panic", "shy", "quietones"] },
+  { label: "lonely", icon: "favorite", color: "#e11d48", tags: ["lonely", "loneliness", "connection", "friendship", "newhere", "introductions"] },
   { label: "burnt out", icon: "local_fire_department", color: "#ea580c", tags: ["burnout", "tired", "rest", "work"] },
   { label: "grieving", icon: "favorite_border", color: "#2563eb", tags: ["grief", "loss", "remembering", "bereavement"] },
   { label: "motivated", icon: "bolt", color: "#ca8a04", tags: ["motivation", "habits", "goals", "growth"] },
-  { label: "new in town", icon: "explore", color: "#16a34a", tags: ["newintown", "toronto", "moving", "meet"] },
+  { label: "new in town", icon: "explore", color: "#16a34a", tags: ["newintown", "toronto", "moving", "meet", "newhere"] },
 ];
 
 /** What each scope is called on screen — also what the filter button announces. */
