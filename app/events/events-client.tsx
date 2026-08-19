@@ -1187,7 +1187,29 @@ export default function EventsClient({
                 {label}
               </button>
             ))}
-            <span style={{ width: 2 }} />
+            <button
+              type="button"
+              onClick={() => {
+                const d = new Date();
+                if (view === "month") setCalMonth(new Date(d.getFullYear(), d.getMonth(), 1));
+                else setWeekOffset(0);
+                setSelectedDay(dayKey(d));
+              }}
+              style={{
+                width: "auto",
+                padding: "5px 12px",
+                fontSize: 12,
+                fontWeight: 700,
+                borderRadius: 999,
+                background: "var(--card)",
+                color: "var(--muted)",
+                border: "1px solid var(--border)",
+                cursor: "pointer",
+                fontFamily: "inherit",
+              }}
+            >
+              today
+            </button>
             <button
               type="button"
               onClick={() => {
@@ -1215,29 +1237,6 @@ export default function EventsClient({
               <span className="msr" style={{ fontSize: 17 }} aria-hidden>
                 chevron_right
               </span>
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                const d = new Date();
-                if (view === "month") setCalMonth(new Date(d.getFullYear(), d.getMonth(), 1));
-                else setWeekOffset(0);
-                setSelectedDay(dayKey(d));
-              }}
-              style={{
-                width: "auto",
-                padding: "0 2px",
-                background: "transparent",
-                border: "none",
-                cursor: "pointer",
-                fontSize: 13,
-                color: "var(--muted)",
-                textDecoration: "underline",
-                textUnderlineOffset: 3,
-                fontFamily: "inherit",
-              }}
-            >
-              today
             </button>
           </div>
 
