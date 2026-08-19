@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { previewText } from "@/lib/message-preview";
 import PageHeader from "@/app/page-header";
 import ChannelLounge, { type LoungeMember } from "@/app/chat/chat-lounge";
 import { useChatMenu } from "@/app/chat/chat-shell";
@@ -313,8 +314,7 @@ function activityLabel(iso: string | undefined, now: number): string | null {
 }
 
 function previewOf(m: RoomActivity): string {
-  if (m.kind === "gif") return "sent a GIF";
-  return m.content.replace(/\{\{emoji:[^|{}]+\|([^{}]+)\}\}/g, ":$1:");
+  return previewText(m, { verb: true });
 }
 
 function compactCount(n: number): string {

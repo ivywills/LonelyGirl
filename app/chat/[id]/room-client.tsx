@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { isNativeMobile } from "@/lib/runtime";
+import { previewText } from "@/lib/message-preview";
+import { MOMENT_TYPES, momentPayload, momentTypeOf } from "@/lib/moments";
 import {
   ImagePicker,
   ROOM_COLORS,
@@ -231,92 +233,14 @@ function renderMessageContent(content: string): (string | { url: string; name: s
   return parts;
 }
 
-/** A 'moment' message's payload — `{"type":"birthday","name":"Amara"}`. */
-function momentPayload(content: string): { type: string; name: string } | null {
-  try {
-    const p = JSON.parse(content);
-    if (p && typeof p === "object" && typeof p.name === "string") {
-      return { type: typeof p.type === "string" ? p.type : "birthday", name: p.name };
-    }
-  } catch {
-    /* not a moment we understand */
-  }
-  return null;
-}
-
-/** The announcement card kinds — each renders its own moment card. */
-const MOMENT_TYPES: {
-  key: string;
-  chip: string;
-  icon: string;
-  placeholder: string;
-  title: (v: string) => string;
-  cheer: string;
-  confetti: boolean;
-  grad: string;
-}[] = [
-  {
-    key: "birthday",
-    chip: "birthday",
-    icon: "🎂",
-    placeholder: "whose birthday is it?",
-    title: (n) => `it's ${n}'s birthday 🎂`,
-    cheer: "🎉 throw confetti",
-    confetti: true,
-    grad: "linear-gradient(135deg, #fff7e0, #ffeef6)",
-  },
-  {
-    key: "win",
-    chip: "big win",
-    icon: "🎉",
-    placeholder: "what are we celebrating?",
-    title: (t) => `${t} 🎉`,
-    cheer: "🎉 throw confetti",
-    confetti: true,
-    grad: "linear-gradient(135deg, #e3f4ff, #ffeef6)",
-  },
-  {
-    key: "welcome",
-    chip: "welcome",
-    icon: "💙",
-    placeholder: "who just joined us?",
-    title: (n) => `welcome to the room, ${n} 💙`,
-    cheer: "👋 say hi",
-    confetti: true,
-    grad: "linear-gradient(135deg, #e8f6f1, #e3f4ff)",
-  },
-  {
-    key: "announcement",
-    chip: "announcement",
-    icon: "📣",
-    placeholder: "what does the room need to know?",
-    title: (t) => `📣 ${t}`,
-    cheer: "💙 noted",
-    confetti: false,
-    grad: "linear-gradient(135deg, #fff7e0, #e3f4ff)",
-  },
-];
-
-
 function excerptOf(m: Msg, own: boolean): string {
   const who = own ? "You" : m.display_name;
-  const what =
-    m.kind === "image"
-      ? "📷 Photo"
-      : m.kind === "gif"
-        ? "GIF"
-        : m.kind === "voice"
-          ? "🎙️ Voice note"
-          : m.content.replace(CUSTOM_EMOJI_RE, "▪").slice(0, 80);
-  return `${who}: ${what}`;
+  return `${who}: ${previewText(m).slice(0, 80)}`;
 }
 
 /** What a pin reads as in the strip/list — never a raw storage URL. */
 function pinLabel(m: Msg): string {
-  if (m.kind === "image") return "📷 photo";
-  if (m.kind === "gif") return "GIF";
-  if (m.kind === "voice") return "🎙️ voice note";
-  return m.content.replace(CUSTOM_EMOJI_RE, "▪");
+  return previewText(m);
 }
 
 async function uploadCustomEmoji(
@@ -3005,7 +2929,7 @@ export default function RoomClient({
                 }
                 if (block.type === "moment") {
                   const payload = momentPayload(block.m.content);
-                  const mt = MOMENT_TYPES.find((t) => t.key === payload?.type) ?? MOMENT_TYPES[0];
+                  const mt = momentTypeOf(payload?.type);
                   const c = cheers[block.m.id] ?? { count: 0, mine: false };
                   return (
                     <div
@@ -3964,15 +3888,9 @@ export default function RoomClient({
                     >
                       {editingMsg
                         ? "Editing your message"
-                        : `Replying to ${replyTo!.user_id === userId ? "yourself" : replyTo!.display_name}: ${
-                            replyTo!.kind === "text"
-                              ? replyTo!.content.replace(CUSTOM_EMOJI_RE, "▪").slice(0, 60)
-                              : replyTo!.kind === "image"
-                                ? "📷 Photo"
-                                : replyTo!.kind === "voice"
-                                  ? "🎙️ Voice note"
-                                  : "GIF"
-                          }`}
+                        : `Replying to ${
+                            replyTo!.user_id === userId ? "yourself" : replyTo!.display_name
+                          }: ${previewText(replyTo!).slice(0, 60)}`}
                     </span>
                     <button
                       type="button"

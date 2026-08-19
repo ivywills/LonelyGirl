@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import PageHeader from "@/app/page-header";
 import { Avatar } from "@/app/profile-card";
+import { previewText } from "@/lib/message-preview";
 import { roomSurface, type Room } from "@/app/chat/rooms-client";
 import type { RoomActivity } from "@/app/chat/rooms-client";
 
@@ -44,12 +45,7 @@ export default function ChannelLounge({
   function activityLine(room: Room) {
     const last = lastMessages[room.id];
     if (!last) return null;
-    const text =
-      last.kind === "gif"
-        ? "sent a GIF"
-        : last.kind === "image"
-          ? "sent a photo"
-          : last.content.replace(/\{\{emoji:[^|{}]+\|([^{}]+)\}\}/g, "$1").slice(0, 70);
+    const text = previewText(last, { verb: true }).slice(0, 70);
     const d = new Date(last.created_at);
     const when =
       d.toDateString() === new Date().toDateString()

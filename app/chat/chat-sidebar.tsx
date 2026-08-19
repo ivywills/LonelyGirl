@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { roomSurface } from "@/app/chat/rooms-client";
+import { previewSender, previewText } from "@/lib/message-preview";
 
 type LastMessage = {
   display_name: string;
@@ -38,12 +39,7 @@ function formatSidebarTime(iso: string): string {
 /** Sender chip + message text, split so the name can render as a bubble. */
 function previewParts(m: LastMessage): { name: string | null; text: string } {
   if (!m) return { name: null, text: "No messages yet" };
-  if (m.kind === "system") return { name: null, text: m.content };
-  if (m.kind === "gif") return { name: m.display_name, text: "GIF" };
-  if (m.kind === "image") return { name: m.display_name, text: "📷 photo" };
-  if (m.kind === "voice") return { name: m.display_name, text: "🎙️ voice note" };
-  const clean = m.content.replace(/\{\{emoji:[^|{}]+\|([^{}]+)\}\}/g, ":$1:");
-  return { name: m.display_name, text: clean };
+  return { name: previewSender(m), text: previewText(m) };
 }
 
 export default function ChatSidebar({
