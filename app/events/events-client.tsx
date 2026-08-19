@@ -19,9 +19,13 @@ export type EventRow = {
   capacity: number | null;
   bg_color: string;
   image_url: string;
+  /* Comfort fields — host-written reassurance for anyone arriving nervous. */
+  arrival_note: string;
+  quiet: boolean;
+  first_timer: boolean;
 };
 
-type Attendee = { event_id: string; user_id: string; display_name: string; plus_ones: number };
+type Attendee = { event_id: string; user_id: string; display_name: string };
 type WaitRow = { event_id: string; user_id: string; created_at: string };
 type ReactionCounts = Record<string, Record<string, number>>;
 
@@ -180,6 +184,94 @@ function Chip({
   );
 }
 
+/*
+ * The community's one rule, said as reassurance rather than policy. Everyone
+ * arrives on their own, so there is never an established group to break into.
+ */
+const ALONE_LINES = [
+  "Showing up alone can be scary, but you won't be the only one.",
+  "You don't have to say anything at quiet events, you can just observe.",
+  "I will be at good first events to ensure that everyone feels welcome.",
+];
+
+/*
+ * Decoration, not information: line 1 renders on the server and the rotation
+ * only starts after mount, so there is nothing to mismatch on hydration and
+ * reduced-motion simply holds on the first line.
+ */
+function AloneRule() {
+  const [idx, setIdx] = useState(0);
+  useEffect(() => {
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    const t = setInterval(() => setIdx((i) => (i + 1) % ALONE_LINES.length), 7000);
+    return () => clearInterval(t);
+  }, []);
+  return (
+    <p style={{ margin: "-4px 4px 16px", fontSize: 13, lineHeight: 1.5, color: "var(--muted)" }}>
+      <span style={{ fontFamily: SERIF, fontSize: 14.5, fontWeight: 600, color: "var(--text)" }}>
+        You&apos;ll walk in alone. So will everyone else. No plus-ones, no groups, there&apos;s
+        never a circle to break into.
+      </span>
+      <span style={{ display: "block", marginTop: 3 }}>{ALONE_LINES[idx]}</span>
+    </p>
+  );
+}
+
+/*
+ * Comfort badges. Read-only for guests; only the admin form writes them.
+ * `quiet` promises talking is optional, `first_timer` marks an easy first one.
+ */
+const COMFORT: { key: "quiet" | "first_timer"; icon: string; short: string; long: string; hint: string }[] = [
+  { key: "quiet", icon: "volume_off", short: "quiet", long: "quiet, talking optional", hint: "talking optional" },
+  {
+    key: "first_timer",
+    icon: "waving_hand",
+    short: "good first event",
+    long: "good first event",
+    hint: "an easy one to start with",
+  },
+];
+
+/** Comfort badge. `size` "row" is the agenda line, "detail" the pop-up banner. */
+function ComfortBadge({
+  icon,
+  label,
+  hint,
+  size,
+  butter,
+}: {
+  icon: string;
+  label: string;
+  hint: string;
+  size: "row" | "detail";
+  butter?: boolean;
+}) {
+  const detail = size === "detail";
+  return (
+    <span
+      title={hint}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 4,
+        borderRadius: 999,
+        padding: detail ? "2px 10px" : "1px 8px 2px",
+        fontSize: detail ? 11 : 10,
+        fontWeight: 700,
+        background: butter ? BUTTER : "var(--card)",
+        color: butter ? "#2b2733" : detail ? "#2c2635" : "var(--muted)",
+        border: inkBorder(0.16),
+        whiteSpace: "nowrap",
+      }}
+    >
+      <span className="msr" style={{ fontSize: detail ? 13 : 12 }} aria-hidden>
+        {icon}
+      </span>
+      {label}
+    </span>
+  );
+}
+
 export default function EventsClient({
   events,
   initialAttendees,
@@ -241,6 +333,9 @@ export default function EventsClient({
   const [capacity, setCapacity] = useState("");
   const [imageUrl, setImageUrl] = useState("");
   const [bgColor, setBgColor] = useState(ROOM_COLORS[11]);
+  const [arrivalNote, setArrivalNote] = useState("");
+  const [quiet, setQuiet] = useState(false);
+  const [firstTimer, setFirstTimer] = useState(false);
   // When set, the form above edits this event instead of creating a new one
   const [editingId, setEditingId] = useState<string | null>(null);
 
@@ -267,9 +362,8 @@ export default function EventsClient({
   /** Everything the row and the pop-up need to know about one event. */
   function stat(e: EventRow) {
     const att = attendees.filter((a) => a.event_id === e.id);
-    const going = att.reduce((n, a) => n + 1 + (a.plus_ones || 0), 0);
-    const mine = userId ? att.find((a) => a.user_id === userId) : undefined;
-    const booked = !!mine;
+    const going = att.length;
+    const booked = userId ? att.some((a) => a.user_id === userId) : false;
     const full = e.capacity != null && going >= e.capacity;
     const isPast = new Date(e.starts_at).getTime() < Date.now();
     const wl = waitlist
@@ -280,7 +374,6 @@ export default function EventsClient({
       att,
       going,
       booked,
-      plusOne: (mine?.plus_ones ?? 0) > 0,
       full,
       isPast,
       hosting: !!userId && e.creator_id === userId,
@@ -301,6 +394,9 @@ export default function EventsClient({
     setCapacity("");
     setImageUrl("");
     setBgColor(ROOM_COLORS[11]);
+    setArrivalNote("");
+    setQuiet(false);
+    setFirstTimer(false);
   }
 
   function openEdit(e: EventRow) {
@@ -313,6 +409,9 @@ export default function EventsClient({
     setCapacity(e.capacity ? String(e.capacity) : "");
     setImageUrl(e.image_url);
     setBgColor(e.bg_color);
+    setArrivalNote(e.arrival_note ?? "");
+    setQuiet(!!e.quiet);
+    setFirstTimer(!!e.first_timer);
     setCreating(true);
     setError("");
     setOpenId(null);
@@ -330,7 +429,7 @@ export default function EventsClient({
     else
       setAttendees((prev) => [
         ...prev,
-        { event_id: e.id, user_id: userId, display_name: displayName, plus_ones: 0 },
+        { event_id: e.id, user_id: userId, display_name: displayName },
       ]);
   }
 
@@ -353,15 +452,14 @@ export default function EventsClient({
      * frees up, so the first person in line is promoted. Their display name
      * isn't in the waitlist row — they render anonymously until next load.
      */
-    const mySeats = 1 + (st.plusOne ? 1 : 0);
     const next =
-      e.capacity != null && st.wl.length > 0 && st.going - mySeats < e.capacity
+      e.capacity != null && st.wl.length > 0 && st.going - 1 < e.capacity
         ? st.wl.find((w) => w.user_id !== userId)
         : undefined;
     setAttendees((prev) => {
       const rest = prev.filter((a) => !(a.event_id === e.id && a.user_id === userId));
       return next
-        ? [...rest, { event_id: e.id, user_id: next.user_id, display_name: "", plus_ones: 0 }]
+        ? [...rest, { event_id: e.id, user_id: next.user_id, display_name: "" }]
         : rest;
     });
     if (next) {
@@ -432,25 +530,6 @@ export default function EventsClient({
     if (err) setError(err.message);
   }
 
-  async function togglePlusOne(e: EventRow) {
-    if (!userId) return;
-    const st = stat(e);
-    // A +1 takes a seat: no bringing one to an event that's already full
-    if (!st.plusOne && st.full) return;
-    const next = st.plusOne ? 0 : 1;
-    setAttendees((prev) =>
-      prev.map((a) =>
-        a.event_id === e.id && a.user_id === userId ? { ...a, plus_ones: next } : a
-      )
-    );
-    const supabase = createClient();
-    const { error: err } = await supabase
-      .from("event_attendees")
-      .update({ plus_ones: next })
-      .eq("event_id", e.id)
-      .eq("user_id", userId);
-    if (err) setError(err.message);
-  }
 
   async function toggleReact(id: string, kind: string) {
     if (!userId) return signIn();
@@ -524,6 +603,9 @@ export default function EventsClient({
       capacity: Number.isFinite(cap) && cap > 0 ? cap : null,
       bg_color: bgColor,
       image_url: imageUrl.trim(),
+      arrival_note: arrivalNote.trim(),
+      quiet,
+      first_timer: firstTimer,
     };
 
     if (editingId) {
@@ -565,7 +647,7 @@ export default function EventsClient({
     setLocalEvents((prev) => [...prev, data].sort((a, b) => a.starts_at.localeCompare(b.starts_at)));
     setAttendees((prev) => [
       ...prev,
-      { event_id: data.id, user_id: userId, display_name: displayName, plus_ones: 0 },
+      { event_id: data.id, user_id: userId, display_name: displayName },
     ]);
     setCreating(false);
     setBusy(false);
@@ -934,6 +1016,36 @@ export default function EventsClient({
                 />
               </div>
             </div>
+
+            {/*
+             * Scripts the scary first minute. Optional, but an event without
+             * one loses the arrival box in the pop-up, so prompt for it.
+             */}
+            <label style={labelStyle}>how will they find you?</label>
+            <input
+              value={arrivalNote}
+              onChange={(e) => setArrivalNote(e.target.value)}
+              maxLength={140}
+              placeholder="Script the scary first minute, e.g. look for the yellow tote by the window, I'll wave you over"
+              style={fieldStyle}
+            />
+
+            <label style={labelStyle}>comfort level</label>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
+              <Chip
+                active={quiet}
+                icon="volume_off"
+                label="quiet, talking optional"
+                onClick={() => setQuiet((v) => !v)}
+              />
+              <Chip
+                active={firstTimer}
+                icon="waving_hand"
+                label="good first event"
+                onClick={() => setFirstTimer((v) => !v)}
+              />
+            </div>
+
             <label style={labelStyle}>event photo</label>
             <ImagePicker
               id="create-event-image"
@@ -1317,6 +1429,9 @@ export default function EventsClient({
           )}
         </div>
 
+        {/* The rule, said gently: a paragraph under the calendar, not a banner */}
+        <AloneRule />
+
         {/* Search + scope row */}
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
           <label
@@ -1492,7 +1607,19 @@ export default function EventsClient({
                       </span>
                     </span>
                     <span style={{ flex: 1, minWidth: 150, display: "flex", flexDirection: "column", gap: 3 }}>
-                      <span style={{ fontSize: 15, fontWeight: 700, lineHeight: 1.25 }}>{e.title}</span>
+                      <span style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                        <span style={{ fontSize: 15, fontWeight: 700, lineHeight: 1.25 }}>{e.title}</span>
+                        {COMFORT.filter((c) => e[c.key]).map((c) => (
+                          <ComfortBadge
+                            key={c.key}
+                            icon={c.icon}
+                            label={c.short}
+                            hint={c.hint}
+                            size="row"
+                            butter={c.key === "first_timer"}
+                          />
+                        ))}
+                      </span>
                       <span
                         style={{
                           fontSize: 12.5,
@@ -1695,7 +1822,7 @@ export default function EventsClient({
                       </span>
                     </span>
                   )}
-                  <div style={{ marginTop: 10 }}>
+                  <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
                     <span
                       style={{
                         background: BUTTER,
@@ -1711,6 +1838,9 @@ export default function EventsClient({
                     >
                       {open.category}
                     </span>
+                    {COMFORT.filter((c) => open[c.key]).map((c) => (
+                      <ComfortBadge key={c.key} icon={c.icon} label={c.long} hint={c.hint} size="detail" />
+                    ))}
                   </div>
                   <h2
                     style={{
@@ -1764,6 +1894,38 @@ export default function EventsClient({
                       )}
                     </p>
                   )}
+
+                  {/*
+                   * The single most useful thing on this card for a nervous
+                   * first-timer, so it sits in the open, never behind a
+                   * disclosure.
+                   */}
+                  {open.arrival_note && (
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "flex-start",
+                        gap: 9,
+                        border: "2px dashed rgba(43, 39, 51, 0.2)",
+                        background: "#faf8f3",
+                        borderRadius: 14,
+                        padding: "11px 14px",
+                        marginBottom: 14,
+                      }}
+                    >
+                      <span
+                        className="msr"
+                        style={{ fontSize: 18, color: "var(--muted)", flex: "none", marginTop: 1 }}
+                        aria-hidden
+                      >
+                        explore
+                      </span>
+                      <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.5 }}>
+                        <strong>your first 90 seconds:</strong> {open.arrival_note}
+                      </p>
+                    </div>
+                  )}
+
                   <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 16 }}>
                     <Chip
                       active={reminders.has(open.id)}
@@ -1888,11 +2050,7 @@ export default function EventsClient({
                     <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
                       {guests.map((a) => {
                         const isMe = a.user_id === userId;
-                        const name = isMe
-                          ? a.plus_ones > 0
-                            ? "you +1"
-                            : "you"
-                          : (a.display_name || "someone").split(" ")[0];
+                        const name = isMe ? "you" : (a.display_name || "someone").split(" ")[0];
                         return (
                           <ProfileTrigger
                             key={a.user_id}
@@ -1954,6 +2112,24 @@ export default function EventsClient({
                       )}
                     </div>
                   </div>
+
+                  {/* Said on every event, not just the quiet ones */}
+                  <p
+                    style={{
+                      margin: "0 0 14px",
+                      fontSize: 13,
+                      color: "var(--muted)",
+                      display: "flex",
+                      alignItems: "flex-start",
+                      gap: 7,
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    <span className="msr" style={{ fontSize: 16, flex: "none", marginTop: 1 }} aria-hidden>
+                      hearing
+                    </span>
+                    you can come and not talk to anyone, just listening counts as showing up.
+                  </p>
 
                   {st.onWl && (
                     <p
@@ -2071,32 +2247,6 @@ export default function EventsClient({
                       }}
                     >
                       join the waitlist
-                    </button>
-                  )}
-                  {userId && st.booked && !st.hosting && !st.isPast && (
-                    <button
-                      type="button"
-                      onClick={() => togglePlusOne(open)}
-                      style={{
-                        width: "auto",
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: 6,
-                        padding: "10px 15px",
-                        fontSize: 13,
-                        fontWeight: 600,
-                        borderRadius: 999,
-                        background: st.plusOne ? BUTTER : "var(--card)",
-                        color: "var(--text)",
-                        border: st.plusOne ? inkBorder(0.25) : "1px solid var(--border)",
-                        cursor: "pointer",
-                        fontFamily: "inherit",
-                      }}
-                    >
-                      <span className="msr" style={{ fontSize: 16 }} aria-hidden>
-                        person_add
-                      </span>
-                      {st.plusOne ? "+1 coming with you" : "bring a +1"}
                     </button>
                   )}
                   {userId && st.onWl && (

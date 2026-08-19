@@ -35,12 +35,12 @@ export default async function EventsPage() {
    * placeholder rows so the row's "N going" and "full" logic is unchanged;
    * they carry no user_id, so nothing renders as a person.
    */
-  let attendees: { event_id: string; user_id: string; display_name: string; plus_ones: number }[] = [];
+  let attendees: { event_id: string; user_id: string; display_name: string }[] = [];
   if (ids.length) {
     if (user) {
       const { data } = await supabase
         .from("event_attendees")
-        .select("event_id, user_id, display_name, plus_ones")
+        .select("event_id, user_id, display_name")
         .in("event_id", ids);
       attendees = data ?? [];
     } else {
@@ -52,7 +52,6 @@ export default async function EventsPage() {
                 event_id: row.event_id,
                 user_id: "",
                 display_name: "",
-                plus_ones: 0,
               }))
             : []
       );
